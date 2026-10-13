@@ -426,6 +426,39 @@ body {
   50% { transform: translateY(-10px); }
 }
 
+/* Big "CHECK!" banner (optional user setting — off by default, PacClone
+   pattern): flashes mid-board on a checking move, then fades out. */
+.ch-check-banner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 6;
+  animation: ch-check-flash 1s ease forwards;
+}
+
+.ch-check-banner span {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(178, 34, 34, 0.9);
+  border: 2px solid #ffd43b;
+  border-radius: 16px;
+  padding: 10px 26px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+@keyframes ch-check-flash {
+  0% { opacity: 0; transform: scale(0.6); }
+  18% { opacity: 1; transform: scale(1.1); }
+  30% { transform: scale(1); }
+  78% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+
 /* ---------- promotion dialog ---------- */
 .ch-promo-overlay {
   position: absolute;
@@ -561,6 +594,33 @@ body {
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.6;
+}
+
+/* Board views inside scroll containers (puzzle, correspondence games, room
+   matches): make the whole ancestor chain a definite-height flex column so
+   the board sizes by height — the same sizing system as the play view —
+   without restructuring each view. The :has() selectors only engage when a
+   board is actually present; list views are untouched. */
+@media (min-width: 921px) {
+  .ch-scroll-area:has(.ch-board-area) {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+  .ch-scroll-area:has(.ch-board-area) *:has(.ch-board-area) {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .ch-scroll-area :has(> .ch-board-area) > .ch-board-area {
+    flex: 1 0 auto;
+  }
+  /* Board views get a wider content column so the height-driven board
+     lands at the same size as the play board. */
+  .ch-scroll-area .ch-view:has(.ch-board-area) {
+    max-width: 1000px;
+  }
 }
 
 /* ---------- narrow screens ---------- */
@@ -804,6 +864,73 @@ body {
 }
 .ch-modal h3 { margin: 0 0 16px; font-size: 1.15rem; }
 .ch-modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+.ch-check-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.ch-check-toggle input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+/* ---------- auth modal ---------- */
+.ch-modal h2 { margin: 0 0 12px; font-size: 1.1rem; text-align: center; }
+.ch-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.ch-oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  font-weight: 600;
+}
+.ch-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 10px 0;
+}
+.ch-or::before, .ch-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.ch-error {
+  color: var(--danger, #e8604c);
+  font-size: 0.85rem;
+  margin: 6px 0;
+  text-align: center;
+}
+.ch-ok {
+  color: #69db7c;
+  font-size: 0.85rem;
+  margin: 6px 0;
+  text-align: center;
+}
+.ch-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
 
 /* ---------- match social ---------- */
 .ch-social { margin-top: 12px; position: relative; }

@@ -16,6 +16,12 @@ import { LeaderboardView } from "./LeaderboardView";
 import { RoomView } from "./RoomView";
 import { FriendsView } from "./FriendsView";
 import { HistoryView } from "./HistoryView";
+import { AuthModal } from "./AuthModal";
+import { isMuted, setMuted } from "@/lib/chess/sound";
+import {
+  useBigCheckBanner,
+  setBigCheckBanner,
+} from "@/lib/chess/checkBanner";
 import { PushSettings } from "./PushSettings";
 import { QuestsView } from "./QuestsView";
 import { PuzzleView } from "./PuzzleView";
@@ -83,6 +89,47 @@ function BoardStyleField({ lang }: { lang: Lang }) {
   );
 }
 
+/**
+ * Sound + effect toggles for the identity menus' Settings sections
+ * (PacClone pattern: sound on/off button, big-check-banner checkbox —
+ * banner defaults OFF).
+ */
+function SettingsToggles({ lang }: { lang: Lang }) {
+  const [muted, setMutedState] = useState(() => isMuted());
+  const bigCheck = useBigCheckBanner();
+  return (
+    <>
+      <button
+        type="button"
+        className="ch-btn ch-btn-sm"
+        onClick={() => {
+          const m = !muted;
+          setMuted(m);
+          setMutedState(m);
+        }}
+        aria-label={muted ? (lang === "vi" ? "Bật âm thanh" : "Turn sound on") : (lang === "vi" ? "Tắt âm thanh" : "Turn sound off")}
+      >
+        {muted ? "🔇" : "🔊"}{" "}
+        {muted
+          ? lang === "vi" ? "Bật âm thanh" : "Turn sound on"
+          : lang === "vi" ? "Tắt âm thanh" : "Turn sound off"}
+      </button>
+      <label className="ch-check-toggle">
+        <input
+          type="checkbox"
+          checked={bigCheck}
+          onChange={(e) => setBigCheckBanner(e.target.checked)}
+        />
+        <span>
+          {lang === "vi"
+            ? 'Hiện chữ "Chiếu!" to ở giữa bàn cờ'
+            : 'Show big "Check!" banner mid-board'}
+        </span>
+      </label>
+    </>
+  );
+}
+
 export function AppShell() {
   const [view, setView] = useState<View>("play");
   const [deepLinkCorrId, setDeepLinkCorrId] = useState<string | null>(null);
@@ -107,8 +154,6 @@ export function AppShell() {
     profile,
     chessStats,
     loading,
-    signInWithGoogle,
-    signInWithFacebook,
     signOut,
     displayName,
     refreshProfile,
@@ -118,6 +163,8 @@ export function AppShell() {
   // Shell UI state: drawer (☰), identity dropdown menu, collapsible settings.
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  // Auth modal (gear menu: Log in / Sign up) — mode "in" or "up", null = closed.
+  const [authOpen, setAuthOpen] = useState<null | "in" | "up">(null);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   // Inline change-password form inside the account menu.
@@ -493,6 +540,7 @@ export function AppShell() {
                           </button>
                         </div>
                         <BoardStyleField lang={lang} />
+                        <SettingsToggles lang={lang} />
                         <PushSettings lang={lang} />
                       </div>
                     )}
@@ -591,6 +639,7 @@ export function AppShell() {
                         </button>
                       </div>
                       <BoardStyleField lang={lang} />
+                      <SettingsToggles lang={lang} />
                     </div>
                     <button
                       type="button"
@@ -598,10 +647,10 @@ export function AppShell() {
                       className="ch-account-menu-item"
                       onClick={() => {
                         setAccountMenuOpen(false);
-                        signInWithGoogle();
+                        setAuthOpen("in");
                       }}
                     >
-                      🔵 {lang === "vi" ? "Đăng nhập với Google" : "Sign in with Google"}
+                      🔑 {s.authLogin}
                     </button>
                     <button
                       type="button"
@@ -609,11 +658,10 @@ export function AppShell() {
                       className="ch-account-menu-item"
                       onClick={() => {
                         setAccountMenuOpen(false);
-                        signInWithFacebook();
+                        setAuthOpen("up");
                       }}
                     >
-                      📘{" "}
-                      {lang === "vi" ? "Đăng nhập với Facebook" : "Sign in with Facebook"}
+                      📝 {s.authSignup}
                     </button>
                   </div>
                 </>
@@ -754,7 +802,7 @@ export function AppShell() {
           configNonce={configNonce}
         />
       )}
-      {view !== "play" && (
+      {view !== "play" && view !== "history" && view !== "puzzle" && (
         <div className="ch-scroll-area">
           {view === "checkin" && <CheckinView lang={lang} />}
           {view === "ranks" && <LeaderboardView lang={lang} />}
@@ -776,7 +824,6 @@ export function AppShell() {
               }}
             />
           )}
-          {view === "history" && <HistoryView lang={lang} />}
           {view === "quests" && <QuestsView lang={lang} />}
           {view === "notifications" && (
             <NotificationsView lang={lang} onChanged={refreshUnread} />
@@ -788,11 +835,20 @@ export function AppShell() {
               onInitialConsumed={() => setDeepLinkCorrId(null)}
             />
           )}
-          {view === "puzzle" && <PuzzleView lang={lang} />}
         </div>
       )}
-      {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}
-      {declinedToast && <div className="ch-toast">{declinedToast}</div>}
+      {/* History and puzzle own their roots: their boards use the full play
+          layout so they render at the same size as the play board. */}
+      {view === "history" && <HistoryView lang={lang} />}
+      {view === "puzzle" && <PuzzleView lang={lang} />}
+      {authOpen && (
+        <AuthModal
+          lang={lang}
+          initialMode={authOpen}
+          onClose={() => setAuthOpen(null)}
+        />
+      )}
+      {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}      {declinedToast && <div className="ch-toast">{declinedToast}</div>}
       {incomingChallenge && (
         <div className="ch-modal-root" role="dialog" aria-modal="true">
           <div className="ch-modal">
