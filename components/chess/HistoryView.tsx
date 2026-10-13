@@ -1,31 +1,46 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Board } from "./Board";
+import { Board, type FightAnim } from "./Board";
 import { Pagination, usePagination } from "./Pagination";
 import { useAuth } from "./AuthProvider";
 import { fetchGameHistory, type ChessGameRow } from "@/lib/supabase/engagement";
 import {
   applyMove,
+  gameStatus,
   initialBoard,
   INITIAL_CASTLING,
 } from "@/lib/chess/engine";
 import { uciToMove } from "@/lib/chess/uci";
-import type { Board as BoardT, Lang } from "@/lib/chess/types";
+import type { Board as BoardT, CastlingRights, Lang, Move } from "@/lib/chess/types";
 import { opposite } from "@/lib/chess/types";
+import { useRef } from "react";
 
-function boardAfter(movesStr: string, plyCount: number): BoardT {
+interface BoardState {
+  board: BoardT;
+  turn: "white" | "black";
+  castling: CastlingRights;
+  ep: { x: number; y: number } | null;
+}
+
+function boardStateAfter(movesStr: string, plyCount: number): BoardState {
   let board = initialBoard();
   let castling = { ...INITIAL_CASTLING };
   let ep: { x: number; y: number } | null = null;
+  let turn: "white" | "black" = "white";
   const ucis = movesStr.trim().split(/\s+/).filter(Boolean).slice(0, plyCount);
   for (const uci of ucis) {
     const r = applyMove(board, uciToMove(uci), castling, ep);
     board = r.board;
     castling = r.castling;
     ep = r.ep;
+    turn = opposite(turn);
   }
-  return board;
+  return { board, turn, castling, ep };
+}
+
+function boardAfter(movesStr: string, plyCount: number): BoardT {
+  return boardStateAfter(movesStr, plyCount).board;
 }
 
 export function HistoryView({ lang }: { lang: Lang }) {
@@ -48,6 +63,94 @@ export function HistoryView({ lang }: { lang: Lang }) {
 
   const { page, pageCount, pageItems, setPage } = usePagination(games, 10);
 
+  // --- replay celebration state ---
+  const [fightAnim, setFightAnim] = useState<FightAnim | null>(null);
+  const [shakeKey, setShakeKey] = useState(0);
+  const [autoplay, setAutoplay] = useState(false);
+  const celebratedRef = useRef<string | null>(null);
+  const fightTimer = useRef<number | null>(null);
+
+  const replayUcis = useMemo(
+    () =>
+      replay
+        ? replay.moves.trim().split(/\s+/).filter(Boolean)
+        : [],
+    [replay]
+  );
+  const totalPlies = replayUcis.length;
+
+  // Final position + status (for the checkmate celebration).
+  const finalState = useMemo(
+    () => (replay ? boardStateAfter(replay.moves, totalPlies) : null),
+    [replay, totalPlies]
+  );
+  const finalStatus = useMemo(
+    () =>
+      finalState
+        ? gameStatus(
+            finalState.board,
+            finalState.turn,
+            finalState.castling,
+            finalState.ep,
+            0
+          )
+        : null,
+    [finalState]
+  );
+  const endedInCheckmate =
+    !!replay && ply === totalPlies && totalPlies > 0 &&
+    !!finalStatus?.over && finalStatus.kind === "checkmate";
+
+  // New game: reset celebration bookkeeping.
+  useEffect(() => {
+    celebratedRef.current = null;
+    setFightAnim(null);
+    setAutoplay(false);
+    if (fightTimer.current) window.clearTimeout(fightTimer.current);
+  }, [replay?.id]);
+
+  // Checkmate celebration when stepping (or autoplaying) to the final ply.
+  useEffect(() => {
+    if (!replay || !endedInCheckmate) return;
+    if (celebratedRef.current === replay.id) return;
+    celebratedRef.current = replay.id;
+    setShakeKey((k) => k + 1);
+  }, [replay, endedInCheckmate, ply]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Glide animation for manual navigation: synthesize the Board's fight
+  // overlay (mover only, no clash) so steps feel like watching the game.
+  useEffect(() => {
+    if (fightTimer.current) window.clearTimeout(fightTimer.current);
+    if (!replay || ply <= 0) {
+      setFightAnim(null);
+      return;
+    }
+    const uci = replayUcis[ply - 1];
+    if (!uci) return;
+    const move = uciToMove(uci);
+    const prev = boardStateAfter(replay.moves, ply - 1);
+    const piece = prev.board[move.fromY][move.fromX];
+    if (!piece) return;
+    setFightAnim({ id: ply, move, piece, captured: null });
+    fightTimer.current = window.setTimeout(() => setFightAnim(null), 500);
+  }, [ply, replay, replayUcis]);
+
+  // Autoplay.
+  useEffect(() => {
+    if (!autoplay || !replay) return;
+    if (ply >= totalPlies) {
+      setAutoplay(false);
+      return;
+    }
+    const t = window.setTimeout(() => setPly((p) => p + 1), 700);
+    return () => window.clearTimeout(t);
+  }, [autoplay, ply, replay, totalPlies]);
+
+  const currentMove: Move | null =
+    replay && ply > 0 && replayUcis[ply - 1]
+      ? uciToMove(replayUcis[ply - 1])
+      : null;
+
   const stats = useMemo(() => {
     let wins = 0,
       losses = 0,
@@ -69,28 +172,35 @@ export function HistoryView({ lang }: { lang: Lang }) {
   }
 
   if (replay) {
-    const totalPlies = replay.moves.trim().split(/\s+/).filter(Boolean).length;
     return (
       <div className="ch-view">
         <button type="button" className="ch-btn ch-btn-sm" onClick={() => setReplay(null)}>
           ← {lang === "vi" ? "Lịch sử" : "History"}
         </button>
         <div className="ch-board-area" style={{ marginTop: 12 }}>
-          <div className="ch-board-fit">
+          <div key={shakeKey} className={`ch-board-fit${shakeKey > 0 ? " shake" : ""}`}>
             <Board
               board={boardAfter(replay.moves, ply)}
               flipped={replay.player_color === "black"}
               selected={null}
               targets={[]}
-              lastMove={null}
+              lastMove={currentMove}
               checkAt={null}
               checkKey={0}
               checkBadge=""
-              fight={null}
+              fight={fightAnim}
               interactive={false}
               boardLabel=""
               onSquareClick={() => {}}
             />
+            {endedInCheckmate && (
+              <div className="ch-mate-overlay" aria-hidden="true">
+                <div className="ch-mate-banner">
+                  <span className="ch-mate-crown">♔</span>
+                  <span>{lang === "vi" ? "Chiếu hết!" : "Checkmate!"}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="ch-replay-controls">
@@ -118,6 +228,16 @@ export function HistoryView({ lang }: { lang: Lang }) {
             onClick={() => setPly(totalPlies)}
           >
             ⏭
+          </button>
+          <button
+            type="button"
+            className="ch-btn ch-btn-sm"
+            disabled={ply === totalPlies}
+            onClick={() => setAutoplay((a) => !a)}
+          >
+            {autoplay
+              ? lang === "vi" ? "⏸ Dừng" : "⏸ Pause"
+              : lang === "vi" ? "⏵ Tự chạy" : "⏵ Auto"}
           </button>
         </div>
       </div>

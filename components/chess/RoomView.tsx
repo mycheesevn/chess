@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createRoom,
   joinRoom,
@@ -14,11 +14,32 @@ import { RoomMatchView } from "./RoomMatchView";
 import { TournamentView } from "./TournamentView";
 import type { Lang } from "@/lib/chess/types";
 
-export function RoomView({ lang }: { lang: Lang }) {
+export function RoomView({
+  lang,
+  initialRoomId,
+  onInitialConsumed,
+}: {
+  lang: Lang;
+  /** Open this room as soon as it's in the room list (e.g. after accepting a challenge). */
+  initialRoomId?: string | null;
+  onInitialConsumed?: () => void;
+}) {
   const { user } = useAuth();
   const [myRooms, setMyRooms] = useState<Room[]>([]);
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const consumedRef = useRef<string | null>(null);
+
+  // Open a deep-linked room (challenge accept) once the room list is loaded.
+  useEffect(() => {
+    if (!initialRoomId || consumedRef.current === initialRoomId) return;
+    const found = myRooms.find((r) => r.id === initialRoomId);
+    if (found) {
+      consumedRef.current = initialRoomId;
+      setActiveRoom(found);
+      onInitialConsumed?.();
+    }
+  }, [initialRoomId, myRooms, onInitialConsumed]);
   const [roomName, setRoomName] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [joinCode, setJoinCode] = useState("");

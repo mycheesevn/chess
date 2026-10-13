@@ -17,7 +17,9 @@ import {
   finishRoomMatch,
   getActiveMatch,
   pushMove,
+  startRematch,
   subscribeMatch,
+  subscribeRoomMatches,
   type RoomMatch,
 } from "@/lib/supabase/rooms";
 import { useAuth } from "./AuthProvider";
@@ -79,8 +81,12 @@ export function RoomMatchView({
   const [match, setMatch] = useState<RoomMatch | null>(null);
   const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
   const [pendingPromo, setPendingPromo] = useState<Move | null>(null);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [rematching, setRematching] = useState(false);
+  const [rematchMsg, setRematchMsg] = useState("");
   const matchRef = useRef<RoomMatch | null>(null);
   matchRef.current = match;
+  const finishedRef = useRef(false);
 
   useEffect(() => {
     if (initialMatchId) {
@@ -95,16 +101,37 @@ export function RoomMatchView({
 
   useEffect(() => {
     if (!match) return;
-    const ch = subscribeMatch(match.id, (m) => {
-      // Only update if the remote has more moves (avoid echo loops)
-      const local = (matchRef.current?.moves ?? "").trim().split(/\s+/).filter(Boolean).length;
-      const remote = (m.moves ?? "").trim().split(/\s+/).filter(Boolean).length;
-      if (remote >= local) setMatch(m);
-    });
+    const ch = subscribeMatch(
+      match.id,
+      (m) => {
+        // Only update if the remote has more moves (avoid echo loops)
+        const local = (matchRef.current?.moves ?? "").trim().split(/\s+/).filter(Boolean).length;
+        const remote = (m.moves ?? "").trim().split(/\s+/).filter(Boolean).length;
+        if (remote >= local) setMatch(m);
+      },
+      { onPresence: setViewerCount, userId: user?.id }
+    );
     return () => {
       ch.unsubscribe();
     };
   }, [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Switch to a newly created match in this room (e.g. a rematch)
+  // without requiring a refresh.
+  useEffect(() => {
+    const ch = subscribeRoomMatches(roomId, (m) => {
+      if (m.status !== "active") return;
+      const cur = matchRef.current;
+      if (cur && cur.id === m.id) return;
+      finishedRef.current = false;
+      setSelected(null);
+      setPendingPromo(null);
+      setMatch(m);
+    });
+    return () => {
+      ch.unsubscribe();
+    };
+  }, [roomId]);
 
   const bs = useMemo(() => replay(match?.moves ?? ""), [match?.moves]);
 
@@ -121,7 +148,6 @@ export function RoomMatchView({
   );
 
   // Finish the match when the game ends (only the player who just moved reports)
-  const finishedRef = useRef(false);
   useEffect(() => {
     if (!status.over || !match || match.status !== "active" || finishedRef.current) return;
     finishedRef.current = true;
@@ -158,6 +184,23 @@ export function RoomMatchView({
     },
     [match]
   );
+
+  const doRematch = useCallback(async () => {
+    if (!match || match.status === "active" || !myColor) return;
+    setRematching(true);
+    setRematchMsg("");
+    try {
+      await startRematch(roomId, match.id);
+      // The room-level INSERT subscription switches both players to the
+      // new match automatically.
+    } catch {
+      setRematchMsg(
+        lang === "vi" ? "Không thể bắt đầu ván mới." : "Could not start a rematch."
+      );
+    } finally {
+      setRematching(false);
+    }
+  }, [match, myColor, roomId, lang]);
 
   const targets = useMemo(
     () =>
@@ -236,7 +279,25 @@ export function RoomMatchView({
             {myColor === null && (lang === "vi" ? " (khán giả)" : " (spectator)")}
           </span>
         )}
+        {viewerCount > 0 && (
+          <span className="ch-viewers" title={lang === "vi" ? "Đang xem" : "Watching"}>
+            👁 {viewerCount}
+          </span>
+        )}
       </div>
+      {status.over && match.status !== "active" && myColor && (
+        <div className="ch-rematch-row">
+          <button
+            type="button"
+            className="ch-btn ch-btn-primary ch-btn-sm"
+            disabled={rematching}
+            onClick={doRematch}
+          >
+            🔁 {lang === "vi" ? "Đấu lại" : "Rematch"}
+          </button>
+          {rematchMsg && <span className="ch-msg">{rematchMsg}</span>}
+        </div>
+      )}
       <div className="ch-board-area">
         <div className="ch-board-fit">
           <Board

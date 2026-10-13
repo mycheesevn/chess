@@ -18,11 +18,14 @@ export function FriendsView({
   lang,
   highlightChallengeId,
   onHighlightConsumed,
+  onOpenRoom,
 }: {
   lang: Lang;
   /** Deep-link: highlight this incoming challenge (e.g. from a notification). */
   highlightChallengeId?: string | null;
   onHighlightConsumed?: () => void;
+  /** Called with the challenge room id after accepting, so the app can open it. */
+  onOpenRoom?: (roomId: string) => void;
 }) {
   const { user } = useAuth();
   const [friends, setFriends] = useState<FriendRow[]>([]);
@@ -65,15 +68,23 @@ export function FriendsView({
 
   const doRespond = async (c: Challenge, accept: boolean) => {
     await respondChallenge(c.id, accept);
-    setMsg(
-      accept
-        ? lang === "vi"
-          ? "Đã chấp nhận! Vào phòng để đấu."
-          : "Accepted! Join the room to play."
-        : lang === "vi"
-          ? "Đã từ chối."
-          : "Declined."
-    );
+    if (accept) {
+      // Challenge rooms pre-add both players as members, so accepting
+      // just opens the room directly.
+      setMsg(
+        lang === "vi"
+          ? "Đã chấp nhận! Đang vào phòng…"
+          : "Accepted! Opening the room…"
+      );
+      if (c.room_id && onOpenRoom) {
+        onOpenRoom(c.room_id);
+        return;
+      }
+    } else {
+      setMsg(lang === "vi" ? "Đã từ chối." : "Declined.");
+      // Let the server notify the challenger (it verifies the decline).
+      notifyPushTrigger({ kind: "challenge_declined", challengeId: c.id });
+    }
     load();
   };
 

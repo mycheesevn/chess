@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChessGame } from "./ChessGame";
 import { claimWelcome } from "@/lib/supabase/quests";
 import { CheckinView } from "./CheckinView";
@@ -12,11 +12,41 @@ import { PushSettings } from "./PushSettings";
 import { QuestsView } from "./QuestsView";
 import { PuzzleView } from "./PuzzleView";
 import { CorrView } from "./CorrView";
+import { NotificationsView } from "./NotificationsView";
+import { fetchUnreadCount } from "@/lib/supabase/notifications";
+import { notifyPushTrigger } from "@/lib/push/client";
+import {
+  respondChallenge,
+  subscribeChallenges,
+  type IncomingChallenge,
+} from "@/lib/supabase/friends";
 import { useAuth } from "./AuthProvider";
 import { recordGameResult } from "@/lib/supabase/engagement";
 import type { Lang } from "@/lib/chess/types";
 
-type View = "play" | "checkin" | "ranks" | "rooms" | "friends" | "history" | "quests" | "corr" | "puzzle" | "push";
+type View =
+  | "play"
+  | "checkin"
+  | "ranks"
+  | "rooms"
+  | "friends"
+  | "history"
+  | "quests"
+  | "corr"
+  | "puzzle"
+  | "notifications";
+
+const NAV_ENTRIES: Array<{ view: View; icon: string; vi: string; en: string }> = [
+  { view: "play", icon: "♞", vi: "Chơi", en: "Play" },
+  { view: "puzzle", icon: "🧩", vi: "Đố", en: "Puzzle" },
+  { view: "rooms", icon: "👥", vi: "Phòng chơi", en: "Rooms" },
+  { view: "friends", icon: "👤", vi: "Bạn bè", en: "Friends" },
+  { view: "corr", icon: "✉️", vi: "Cờ thư", en: "Correspondence" },
+  { view: "checkin", icon: "📅", vi: "Điểm danh", en: "Check-in" },
+  { view: "quests", icon: "🌱", vi: "Nhiệm vụ", en: "Quests" },
+  { view: "ranks", icon: "🏆", vi: "Xếp hạng", en: "Ranks" },
+  { view: "history", icon: "📜", vi: "Lịch sử", en: "History" },
+];
 
 export function AppShell() {
   const [view, setView] = useState<View>("play");
@@ -24,16 +54,51 @@ export function AppShell() {
   const [deepLinkChallengeId, setDeepLinkChallengeId] = useState<string | null>(
     null
   );
-  const [lang, setLang] = useState<Lang>(() => {
+  // Room id to auto-open when the rooms view appears (challenge accept).
+  const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
+  // Realtime incoming challenge popup.
+  const [incomingChallenge, setIncomingChallenge] =
+    useState<IncomingChallenge | null>(null);
+  const [declinedToast, setDeclinedToast] = useState<string | null>(null);
+  const [lang, setLangState] = useState<Lang>(() => {
     try {
       return (localStorage.getItem("chess-lang") as Lang) || "en";
     } catch {
       return "en";
     }
   });
-  const { user, chessStats, loading, signInWithGoogle, signInWithFacebook, signOut, displayName, refreshProfile } =
-    useAuth();
+  const {
+    user,
+    profile,
+    chessStats,
+    loading,
+    signInWithGoogle,
+    signInWithFacebook,
+    signOut,
+    displayName,
+    refreshProfile,
+  } = useAuth();
   const [welcomeMsg, setWelcomeMsg] = useState("");
+
+  // Shell UI state: drawer (☰), identity dropdown menu, collapsible settings.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  // Inline change-password form inside the account menu.
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const setLang = useCallback((l: Lang) => {
+    setLangState(l);
+    try {
+      localStorage.setItem("chess-lang", l);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Welcome bonus on first login
   useEffect(() => {
@@ -52,6 +117,61 @@ export function AppShell() {
       })
       .catch(() => {});
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Unread notification count for the avatar badge: on login + every 60s.
+  const refreshUnread = useCallback(async () => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      setUnreadCount(await fetchUnreadCount());
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+  useEffect(() => {
+    refreshUnread();
+    const t = window.setInterval(refreshUnread, 60000);
+    return () => window.clearInterval(t);
+  }, [refreshUnread]);
+
+  // Realtime challenge popup + declined toast while logged in.
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeChallenges(
+      user.id,
+      (c) => setIncomingChallenge(c),
+      (name) => {
+        setDeclinedToast(
+          lang === "vi"
+            ? `😞 ${name} đã từ chối lời thách đấu của bạn.`
+            : `😞 ${name} declined your challenge.`
+        );
+        window.setTimeout(() => setDeclinedToast(null), 4000);
+      }
+    );
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  const doAcceptChallenge = async (c: IncomingChallenge) => {
+    await respondChallenge(c.id, true);
+    setIncomingChallenge(null);
+    if (c.room_id) {
+      // Challenge rooms pre-add both players as members, so the room can
+      // be opened directly.
+      setPendingRoomId(c.room_id);
+      setView("rooms");
+    }
+  };
+
+  const doDeclineChallenge = async (c: IncomingChallenge) => {
+    await respondChallenge(c.id, false);
+    setIncomingChallenge(null);
+    // Let the server notify the challenger (it verifies the decline).
+    notifyPushTrigger({ kind: "challenge_declined", challengeId: c.id });
+  };
 
   // Handle ?ref=<user-id> referral links
   useEffect(() => {
@@ -79,7 +199,10 @@ export function AppShell() {
   }, [user, refreshProfile]);
 
   // Handle ?corr=<uuid> and ?challenge=<uuid> deep links (from push notifications).
-  useEffect(() => {
+  // Runs on mount AND on window focus: tapping a notification while the app
+  // is already open makes the service worker navigate the existing tab, so a
+  // mount-only parser would miss it and the tap would appear to do nothing.
+  const parseDeepLink = useCallback(() => {
     try {
       const q = new URLSearchParams(window.location.search);
       const corr = q.get("corr");
@@ -100,6 +223,22 @@ export function AppShell() {
     }
   }, []);
 
+  useEffect(() => {
+    parseDeepLink();
+  }, [parseDeepLink]);
+
+  useEffect(() => {
+    const onFocus = () => parseDeepLink();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [parseDeepLink]);
+
+  const go = useCallback((v: View) => {
+    setView(v);
+    setMenuOpen(false);
+    setAccountMenuOpen(false);
+  }, []);
+
   const handleGameEnd = async (
     result: "win" | "loss" | "draw",
     color: "white" | "black",
@@ -116,137 +255,327 @@ export function AppShell() {
     }
   };
 
+  const doChangePassword = async () => {
+    setPwMsg("");
+    if (pw.length < 6) {
+      setPwMsg(
+        lang === "vi"
+          ? "Mật khẩu phải có ít nhất 6 ký tự."
+          : "Password must be at least 6 characters."
+      );
+      return;
+    }
+    setPwBusy(true);
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const sb = createClient();
+      const { error } = await sb.auth.updateUser({ password: pw });
+      if (error) throw error;
+      setPwMsg(lang === "vi" ? "Đã đổi mật khẩu." : "Password changed.");
+      setPw("");
+    } catch {
+      setPwMsg(lang === "vi" ? "Đổi mật khẩu thất bại." : "Failed to change password.");
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
+  const avatarUrl = profile?.avatar_url || null;
+  const avatarInitial = (displayName || "?").charAt(0).toUpperCase();
+
   return (
     <div className="ch-app">
-      <nav className="ch-nav">
-        <div className="ch-nav-tabs" role="tablist">
-          <button
-            role="tab"
-            aria-selected={view === "play"}
-            className={view === "play" ? "active" : ""}
-            onClick={() => setView("play")}
-          >
-            ♞ {lang === "vi" ? "Chơi" : "Play"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "checkin"}
-            className={view === "checkin" ? "active" : ""}
-            onClick={() => setView("checkin")}
-          >
-            📅 {lang === "vi" ? "Điểm danh" : "Check-in"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "ranks"}
-            className={view === "ranks" ? "active" : ""}
-            onClick={() => setView("ranks")}
-          >
-            🏆 {lang === "vi" ? "Xếp hạng" : "Ranks"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "rooms"}
-            className={view === "rooms" ? "active" : ""}
-            onClick={() => setView("rooms")}
-          >
-            👥 {lang === "vi" ? "Phòng" : "Rooms"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "friends"}
-            className={view === "friends" ? "active" : ""}
-            onClick={() => setView("friends")}
-          >
-            👤 {lang === "vi" ? "Bạn" : "Friends"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "history"}
-            className={view === "history" ? "active" : ""}
-            onClick={() => setView("history")}
-          >
-            📜 {lang === "vi" ? "Lịch sử" : "History"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "quests"}
-            className={view === "quests" ? "active" : ""}
-            onClick={() => setView("quests")}
-          >
-            🌱 {lang === "vi" ? "Nhiệm vụ" : "Quests"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "push"}
-            className={view === "push" ? "active" : ""}
-            onClick={() => setView("push")}
-          >
-            🔔
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "corr"}
-            className={view === "corr" ? "active" : ""}
-            onClick={() => setView("corr")}
-          >
-            ✉️ {lang === "vi" ? "Cờ thư" : "Correspondence"}
-          </button>
-          <button
-            role="tab"
-            aria-selected={view === "puzzle"}
-            className={view === "puzzle" ? "active" : ""}
-            onClick={() => setView("puzzle")}
-          >
-            🧩 {lang === "vi" ? "Đố" : "Puzzle"}
-          </button>
+      <header className="ch-topbar">
+        <button
+          type="button"
+          className="ch-menu-btn"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Menu"
+          title="Menu"
+        >
+          ☰
+        </button>
+        <div className="ch-brand">
+          <h1 className="ch-title">♞ {lang === "vi" ? "Cờ vua" : "Chess"}</h1>
         </div>
-        <div className="ch-nav-auth">
+        <div className="ch-account">
           {loading ? null : user ? (
-            <div className="ch-user-chip">
-              <span className="ch-xp">
-                ⚡{chessStats?.xp ?? 0}
-              </span>
-              <span>{displayName}</span>
-              <button type="button" onClick={signOut} className="ch-btn ch-btn-sm">
-                {lang === "vi" ? "Đăng xuất" : "Sign out"}
+            <div className="ch-user" role="group" aria-label="Account">
+              {chessStats && (
+                <span className="ch-chip" title={lang === "vi" ? "Điểm" : "Rating"}>
+                  ⭐ {chessStats.rating} · ⚡{chessStats.xp}
+                </span>
+              )}
+              <button
+                type="button"
+                className="ch-account-btn"
+                onClick={() => setAccountMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                title={displayName}
+                style={{ position: "relative" }}
+              >
+                {unreadCount > 0 && (
+                  <span aria-hidden="true" className="ch-dot" />
+                )}
+                <span className="ch-account-avatar">
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl} alt="" />
+                  ) : (
+                    avatarInitial
+                  )}
+                </span>
+                <span className="ch-account-name">{displayName}</span>
+                <span aria-hidden="true" className="ch-caret">
+                  ▾
+                </span>
               </button>
+              {accountMenuOpen && (
+                <>
+                  <div
+                    className="ch-menu-backdrop"
+                    onClick={() => setAccountMenuOpen(false)}
+                  />
+                  <div className="ch-account-menu" role="menu">
+                    <div className="ch-account-menu-head">
+                      <span className="ch-account-avatar large">
+                        {avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={avatarUrl} alt="" />
+                        ) : (
+                          avatarInitial
+                        )}
+                      </span>
+                      <div className="ch-account-menu-id">
+                        <strong>{displayName}</strong>
+                        <span className="ch-muted">{user.email}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      onClick={() => go("notifications")}
+                    >
+                      🔔 {lang === "vi" ? "Thông báo" : "Notifications"}
+                      {unreadCount > 0 && (
+                        <span aria-hidden="true" className="ch-badge">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      aria-expanded={settingsExpanded}
+                      onClick={() => setSettingsExpanded((v) => !v)}
+                    >
+                      ⚙️ {lang === "vi" ? "Cài đặt" : "Settings"}
+                      <span aria-hidden="true" className="ch-caret">
+                        {settingsExpanded ? "▾" : "▸"}
+                      </span>
+                    </button>
+                    {settingsExpanded && (
+                      <div className="ch-account-menu-settings">
+                        <PushSettings lang={lang} />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      aria-expanded={pwOpen}
+                      onClick={() => {
+                        setPwOpen((v) => !v);
+                        setPwMsg("");
+                      }}
+                    >
+                      🔑 {lang === "vi" ? "Đổi mật khẩu" : "Change password"}
+                      <span aria-hidden="true" className="ch-caret">
+                        {pwOpen ? "▾" : "▸"}
+                      </span>
+                    </button>
+                    {pwOpen && (
+                      <div className="ch-account-menu-settings">
+                        <input
+                          type="password"
+                          value={pw}
+                          onChange={(e) => setPw(e.target.value)}
+                          placeholder={
+                            lang === "vi"
+                              ? "Mật khẩu mới (≥ 6 ký tự)"
+                              : "New password (≥ 6 chars)"
+                          }
+                          className="ch-input"
+                        />
+                        <button
+                          type="button"
+                          className="ch-btn ch-btn-sm"
+                          disabled={pwBusy}
+                          onClick={doChangePassword}
+                        >
+                          {lang === "vi" ? "Đổi mật khẩu" : "Change password"}
+                        </button>
+                        {pwMsg && <p className="ch-msg">{pwMsg}</p>}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        signOut();
+                      }}
+                    >
+                      🚪 {lang === "vi" ? "Đăng xuất" : "Sign out"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
-            <div className="ch-auth-btns">
+            <div className="ch-user" role="group" aria-label="Account">
               <button
                 type="button"
-                onClick={signInWithGoogle}
-                className="ch-btn ch-btn-primary ch-btn-sm"
+                className="ch-account-btn"
+                onClick={() => setAccountMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                title={lang === "vi" ? "Cài đặt" : "Settings"}
               >
-                G {lang === "vi" ? "Đăng nhập" : "Sign in"}
+                <span className="ch-account-avatar">⚙️</span>
               </button>
-              <button
-                type="button"
-                onClick={signInWithFacebook}
-                className="ch-btn ch-btn-sm"
-              >
-                f
-              </button>
+              {accountMenuOpen && (
+                <>
+                  <div
+                    className="ch-menu-backdrop"
+                    onClick={() => setAccountMenuOpen(false)}
+                  />
+                  <div className="ch-account-menu" role="menu">
+                    <div className="ch-account-menu-settings">
+                      <PushSettings lang={lang} />
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        signInWithGoogle();
+                      }}
+                    >
+                      🔵 {lang === "vi" ? "Đăng nhập với Google" : "Sign in with Google"}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        signInWithFacebook();
+                      }}
+                    >
+                      📘{" "}
+                      {lang === "vi" ? "Đăng nhập với Facebook" : "Sign in with Facebook"}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
-      </nav>
+      </header>
+
+      {menuOpen && (
+        <div className="ch-drawer-root">
+          <div
+            className="ch-backdrop"
+            onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <aside className="ch-drawer" role="dialog" aria-label="Menu">
+            <div className="ch-drawer-head">
+              <strong>☰ {lang === "vi" ? "Mục" : "Menu"}</strong>
+              <button
+                type="button"
+                className="ch-btn ch-btn-sm"
+                onClick={() => setMenuOpen(false)}
+                aria-label={lang === "vi" ? "Đóng" : "Close"}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="ch-drawer-body">
+              <section>
+                <h2>{lang === "vi" ? "Chơi" : "Play"}</h2>
+                <div className="ch-drawer-modes" role="tablist" aria-label="Menu">
+                  {NAV_ENTRIES.map((e) => (
+                    <button
+                      key={e.view}
+                      type="button"
+                      role="tab"
+                      aria-selected={view === e.view}
+                      data-active={view === e.view}
+                      onClick={() => go(e.view)}
+                    >
+                      {e.icon} {lang === "vi" ? e.vi : e.en}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <h2>{lang === "vi" ? "Ngôn ngữ / Language" : "Language / Ngôn ngữ"}</h2>
+                <div className="ch-lang" role="group" aria-label="Language / Ngôn ngữ">
+                  <button
+                    type="button"
+                    className={lang === "en" ? "active" : ""}
+                    onClick={() => setLang("en")}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    className={lang === "vi" ? "active" : ""}
+                    onClick={() => setLang("vi")}
+                  >
+                    VI
+                  </button>
+                </div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {view === "play" && <ChessGame onGameEnd={handleGameEnd} lang={lang} setLang={setLang} />}
       {view === "checkin" && <CheckinView lang={lang} />}
       {view === "ranks" && <LeaderboardView lang={lang} />}
-      {view === "rooms" && <RoomView lang={lang} />}
+      {view === "rooms" && (
+        <RoomView
+          lang={lang}
+          initialRoomId={pendingRoomId}
+          onInitialConsumed={() => setPendingRoomId(null)}
+        />
+      )}
       {view === "friends" && (
         <FriendsView
           lang={lang}
           highlightChallengeId={deepLinkChallengeId}
           onHighlightConsumed={() => setDeepLinkChallengeId(null)}
+          onOpenRoom={(id) => {
+            setPendingRoomId(id);
+            setView("rooms");
+          }}
         />
       )}
       {view === "history" && <HistoryView lang={lang} />}
       {view === "quests" && <QuestsView lang={lang} />}
-      {view === "push" && <PushSettings lang={lang} />}
+      {view === "notifications" && (
+        <NotificationsView lang={lang} onChanged={refreshUnread} />
+      )}
       {view === "corr" && (
         <CorrView
           lang={lang}
@@ -256,6 +585,35 @@ export function AppShell() {
       )}
       {view === "puzzle" && <PuzzleView lang={lang} />}
       {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}
+      {declinedToast && <div className="ch-toast">{declinedToast}</div>}
+      {incomingChallenge && (
+        <div className="ch-modal-root" role="dialog" aria-modal="true">
+          <div className="ch-modal">
+            <h3>
+              ⚔️{" "}
+              {lang === "vi"
+                ? `${incomingChallenge.challenger_name} thách đấu bạn!`
+                : `${incomingChallenge.challenger_name} challenges you!`}
+            </h3>
+            <div className="ch-modal-actions">
+              <button
+                type="button"
+                className="ch-btn ch-btn-primary"
+                onClick={() => doAcceptChallenge(incomingChallenge)}
+              >
+                ⚔️ {lang === "vi" ? "Nhận" : "Accept"}
+              </button>
+              <button
+                type="button"
+                className="ch-btn"
+                onClick={() => doDeclineChallenge(incomingChallenge)}
+              >
+                {lang === "vi" ? "Từ chối" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <footer className="ch-footer">
         {lang === "vi"
           ? "Bản quyền thuộc về SynerWork Inc. Mọi quyền được bảo lưu."
