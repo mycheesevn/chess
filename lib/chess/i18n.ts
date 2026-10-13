@@ -12,6 +12,7 @@ export interface Strings {
   blackSecond: string;
   undo: string;
   newGame: string;
+  switchSides: string;
   whiteName: string;
   blackName: string;
   toMove: (colorName: string, check: boolean) => string;
@@ -71,6 +72,7 @@ export const STR: Record<Lang, Strings> = {
     blackSecond: "Black (second)",
     undo: "Undo",
     newGame: "New game",
+    switchSides: "Switch sides",
     whiteName: "White",
     blackName: "Black",
     toMove: (c, check) => `${c} to move${check ? " — check!" : ""}`,
@@ -125,6 +127,7 @@ export const STR: Record<Lang, Strings> = {
     blackSecond: "Đen (đi sau)",
     undo: "Đi lại",
     newGame: "Ván mới",
+    switchSides: "Đổi bên",
     whiteName: "Trắng",
     blackName: "Đen",
     toMove: (c, check) => `${c} đi${check ? " — chiếu!" : ""}`,
