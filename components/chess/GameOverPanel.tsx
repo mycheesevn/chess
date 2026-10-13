@@ -15,6 +15,7 @@ interface Props {
   board: BoardT;
   lang: Lang;
   onNewGame: () => void;
+  onExportVideo?: () => void;
 }
 
 export function GameOverPanel({
@@ -25,6 +26,7 @@ export function GameOverPanel({
   board,
   lang,
   onNewGame,
+  onExportVideo,
 }: Props) {
   const [sharing, setSharing] = useState(false);
   const won =
@@ -88,6 +90,11 @@ export function GameOverPanel({
           >
             📤 {lang === "vi" ? "Khoe" : "Share"}
           </button>
+          {onExportVideo && (
+            <button type="button" className="ch-btn" onClick={onExportVideo}>
+              🎬 {lang === "vi" ? "Xuất video" : "Video"}
+            </button>
+          )}
           <button type="button" className="ch-btn" onClick={onNewGame}>
             {lang === "vi" ? "Ván mới" : "New game"}
           </button>

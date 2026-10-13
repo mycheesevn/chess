@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { fetchLeaderboard, type LeaderboardRow } from "@/lib/supabase/engagement";
 import { followUser } from "@/lib/supabase/friends";
 import { useAuth } from "./AuthProvider";
+import { StatsView } from "./StatsView";
+import { STR } from "@/lib/chess/i18n";
 import { levelForXp, titleForLevel } from "@/lib/chess/levels";
 import type { Lang } from "@/lib/chess/types";
 
@@ -13,6 +15,7 @@ function nameOf(r: LeaderboardRow): string {
 
 export function LeaderboardView({ lang }: { lang: Lang }) {
   const { user } = useAuth();
+  const [tab, setTab] = useState<"board" | "stats">("board");
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState<Set<string>>(new Set());
@@ -37,8 +40,25 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
 
   return (
     <div className="ch-view">
-      <h2>🏆 {lang === "vi" ? "Bảng xếp hạng" : "Leaderboard"}</h2>
-      {loading ? (
+      <div className="ch-lb-tabs">
+        <button
+          type="button"
+          className={tab === "board" ? "active" : ""}
+          onClick={() => setTab("board")}
+        >
+          🏆 {lang === "vi" ? "Bảng xếp hạng" : "Leaderboard"}
+        </button>
+        <button
+          type="button"
+          className={tab === "stats" ? "active" : ""}
+          onClick={() => setTab("stats")}
+        >
+          📊 {STR[lang].stats}
+        </button>
+      </div>
+      {tab === "stats" ? (
+        <StatsView lang={lang} />
+      ) : loading ? (
         <p>…</p>
       ) : rows.length === 0 ? (
         <p>{lang === "vi" ? "Chưa có dữ liệu." : "No data yet."}</p>
