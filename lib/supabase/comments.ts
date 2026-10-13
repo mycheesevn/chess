@@ -1,0 +1,102 @@
+import { createClient } from "./client";
+
+export interface RoomComment {
+  id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  user_name?: string;
+}
+
+export async function fetchComments(matchId: string): Promise<RoomComment[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("chess_room_comments")
+    .select("id, user_id, body, created_at, user:profiles!inner(full_name, username)")
+    .eq("match_id", matchId)
+    .order("created_at", { ascending: true })
+    .limit(50);
+  if (error) throw error;
+  return ((data ?? []) as unknown as Array<
+    RoomComment & { user: { full_name: string | null; username: string | null } }
+  >).map((c) => ({
+    id: c.id,
+    user_id: c.user_id,
+    body: c.body,
+    created_at: c.created_at,
+    user_name: c.user.full_name || c.user.username || "Player",
+  }));
+}
+
+export async function postComment(
+  roomId: string,
+  matchId: string,
+  body: string
+): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+  const { error } = await supabase.from("chess_room_comments").insert({
+    room_id: roomId,
+    match_id: matchId,
+    user_id: user.id,
+    body: body.slice(0, 500),
+  });
+  if (error) throw error;
+}
+
+export async function sendReaction(
+  roomId: string,
+  matchId: string,
+  emoji: string
+): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+  await supabase.from("chess_match_reactions").insert({
+    room_id: roomId,
+    match_id: matchId,
+    user_id: user.id,
+    emoji,
+  });
+}
+
+export function subscribeComments(
+  matchId: string,
+  onNew: (c: RoomComment) => void
+) {
+  const supabase = createClient();
+  return supabase
+    .channel(`chess-comments:${matchId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "chess_room_comments",
+        filter: `match_id=eq.${matchId}`,
+      },
+      (payload: { new: RoomComment }) => onNew(payload.new as RoomComment)
+    )
+    .subscribe();
+}
+
+export function subscribeReactions(
+  matchId: string,
+  onNew: (emoji: string) => void
+) {
+  const supabase = createClient();
+  return supabase
+    .channel(`chess-reactions:${matchId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "chess_match_reactions",
+        filter: `match_id=eq.${matchId}`,
+      },
+      (payload: { new: { emoji: string } }) => onNew(payload.new.emoji)
+    )
+    .subscribe();
+}
