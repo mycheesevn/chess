@@ -48,6 +48,18 @@ export interface Strings {
   minutes: (n: number) => string;
   flagged: (colorName: string) => string;
   restoreToast: string;
+  authLogin: string;
+  authSignup: string;
+  authContinueWith: string;
+  authOr: string;
+  authDisplayName: string;
+  authDisplayNamePh: string;
+  authPassword: string;
+  authInvalid: string;
+  authCheckEmail: string;
+  authClose: string;
+  authNoAccount: string;
+  authHaveAccount: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -116,6 +128,18 @@ export const STR: Record<Lang, Strings> = {
     minutes: (n) => `${n} min`,
     flagged: (c) => `${c} lost on time!`,
     restoreToast: "↩️ Restored your unfinished game.",
+    authLogin: "Log in",
+    authSignup: "Sign up",
+    authContinueWith: "Continue with",
+    authOr: "or",
+    authDisplayName: "Display name (optional)",
+    authDisplayNamePh: "Your name on the leaderboard",
+    authPassword: "Password",
+    authInvalid: "Enter a valid email and a password of 6+ characters.",
+    authCheckEmail: "Account created! Check your email to confirm, then log in.",
+    authClose: "Close",
+    authNoAccount: "New here?",
+    authHaveAccount: "Have an account?",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -172,6 +196,18 @@ export const STR: Record<Lang, Strings> = {
     minutes: (n) => `${n} phút`,
     flagged: (c) => `${c} thua vì hết giờ!`,
     restoreToast: "↩️ Đã khôi phục ván đang chơi dở.",
+    authLogin: "Đăng nhập",
+    authSignup: "Đăng ký",
+    authContinueWith: "Tiếp tục với",
+    authOr: "hoặc",
+    authDisplayName: "Tên hiển thị (tùy chọn)",
+    authDisplayNamePh: "Tên của bạn trên bảng xếp hạng",
+    authPassword: "Mật khẩu",
+    authInvalid: "Nhập email hợp lệ và mật khẩu từ 6 ký tự.",
+    authCheckEmail: "Đã tạo tài khoản! Kiểm tra email để xác nhận rồi đăng nhập.",
+    authClose: "Đóng",
+    authNoAccount: "Chưa có tài khoản?",
+    authHaveAccount: "Đã có tài khoản?",
   },
 };
 

@@ -27,6 +27,8 @@ interface AuthCtx {
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithFacebook: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   displayName: string;
@@ -100,6 +102,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const signIn = useCallback(async (email: string, password: string) => {
+    try {
+      const { error } = await createClient().auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error: error ? error.message : null };
+    } catch {
+      return { error: "Supabase not configured" };
+    }
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    try {
+      const { error } = await createClient().auth.signUp({ email, password });
+      return { error: error ? error.message : null };
+    } catch {
+      return { error: "Supabase not configured" };
+    }
+  }, []);
+
+  // Apply the display name stashed at signup (it takes precedence over the
+  // email-prefix default the DB trigger sets). Email confirmation may delay
+  // the first session, hence this runs on every login until the stash is gone.
+  useEffect(() => {
+    if (!user) return;
+    let stashed: string | null = null;
+    try {
+      stashed = localStorage.getItem("chess-username");
+      localStorage.removeItem("chess-username");
+    } catch {
+      /* storage unavailable */
+    }
+    const name = stashed?.trim().slice(0, 30);
+    if (!name) return;
+    try {
+      createClient().from("profiles").update({ username: name }).eq("id", user.id);
+    } catch {
+      /* ignore */
+    }
+  }, [user]);
+
   const signOut = useCallback(async () => {
     try {
       await createClient().auth.signOut();
@@ -127,11 +171,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signInWithGoogle,
       signInWithFacebook,
+      signIn,
+      signUp,
       signOut,
       refreshProfile,
       displayName,
     }),
-    [user, profile, chessStats, loading, signInWithGoogle, signInWithFacebook, signOut, refreshProfile, displayName]
+    [user, profile, chessStats, loading, signInWithGoogle, signInWithFacebook, signIn, signUp, signOut, refreshProfile, displayName]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
