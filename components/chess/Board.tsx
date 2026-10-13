@@ -3,11 +3,10 @@
 import { useMemo, useRef } from "react";
 import {
   Board as BoardT,
-  GLYPHS,
   Move,
   Piece,
 } from "@/lib/chess/types";
-import { useBoardTheme, type BoardTheme } from "@/lib/chess/boardTheme";
+import { useBoardTheme } from "@/lib/chess/boardTheme";
 import { VectorPieceAt } from "./Pieces";
 
 const CELL = 76;
@@ -41,90 +40,40 @@ interface BoardProps {
   hintMove?: Move | null;
 }
 
-function Glyph({
-  piece,
-  x,
-  y,
-  size,
-}: {
-  piece: Piece;
-  x: number;
-  y: number;
-  size: number;
-}) {
-  const white = piece.color === "white";
-  return (
-    <g filter="url(#pieceShadow)">
-      <text
-        x={x}
-        y={y + size * 0.05}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={size}
-        fill={white ? "url(#gradWhite)" : "url(#gradBlack)"}
-        stroke={white ? "#43331f" : "#050403"}
-        strokeWidth={size * 0.03}
-        style={{
-          paintOrder: "stroke",
-          userSelect: "none",
-          pointerEvents: "none",
-        }}
-      >
-        {GLYPHS[piece.type]}
-      </text>
-      <ellipse
-        cx={x - size * 0.13}
-        cy={y - size * 0.22}
-        rx={size * 0.15}
-        ry={size * 0.08}
-        fill="#ffffff"
-        opacity={white ? 0.55 : 0.3}
-        transform={`rotate(-24 ${x - size * 0.13} ${y - size * 0.22})`}
-        style={{ pointerEvents: "none" }}
-      />
-    </g>
-  );
-}
-
-/** Renders a piece in the active board theme's style: gradient glyphs on
- *  the wood theme, flat vector pieces on the green theme. */
+/** Every board theme renders the same vector piece set (the bold
+ *  two-tone Staunton in Pieces.tsx); themes differ only in the board's
+ *  squares, frame and coordinates. */
 function PieceShape({
   piece,
   x,
   y,
   size,
-  theme,
 }: {
   piece: Piece;
   x: number;
   y: number;
   size: number;
-  theme: BoardTheme;
 }) {
-  if (theme === "green") {
-    return (
-      <g filter="url(#pieceShadowSoft)">
-        <VectorPieceAt
-          type={piece.type}
-          color={piece.color}
-          x={x}
-          y={y}
-          size={size}
-        />
-      </g>
-    );
-  }
-  return <Glyph piece={piece} x={x} y={y} size={size} />;
+  return (
+    <g filter="url(#pieceShadowSoft)">
+      <VectorPieceAt
+        type={piece.type}
+        color={piece.color}
+        x={x}
+        y={y}
+        size={size}
+      />
+    </g>
+  );
 }
 
 /** Clash burst + flying captured piece, played when the mover arrives. */
-function Clash({ x, y, captured, fromX, fromY, theme }: {
+function Clash({ x, y, captured, fromX, fromY }: {
   x: number;
   y: number;
   captured: Piece;
   fromX: number;
   fromY: number;
-  theme: BoardTheme;
 }) {
   const spikes = [];
   for (let i = 0; i < 8; i++) {
@@ -168,7 +117,7 @@ function Clash({ x, y, captured, fromX, fromY, theme }: {
         <animateTransform attributeName="transform" type="translate" values={`0 0;${dx} ${dy}`} dur="0.62s" begin="0.34s" fill="freeze" />
         <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="170 0 0" dur="0.62s" begin="0.34s" fill="freeze" additive="sum" />
         <g transform={`translate(${x} ${y})`}>
-          <PieceShape piece={captured} x={0} y={0} size={theme === "green" ? 62 : 52} theme={theme} />
+          <PieceShape piece={captured} x={0} y={0} size={62} />
         </g>
       </g>
     </g>
@@ -326,7 +275,7 @@ export function Board({
       if (fight && fight.move.toX === x && fight.move.toY === y) continue;
       pieces.push(
         <g key={`${x}-${y}`}>
-          <PieceShape piece={p} x={px(x)} y={py(y)} size={green ? 70 : 54} theme={theme} />
+          <PieceShape piece={p} x={px(x)} y={py(y)} size={70} />
         </g>
       );
     }
@@ -388,19 +337,6 @@ export function Board({
           <stop offset="0.5" stopColor="#5e3618" />
           <stop offset="1" stopColor="#7c4a22" />
         </linearGradient>
-        <radialGradient id="gradWhite" cx="0.38" cy="0.32" r="0.95">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="0.55" stopColor="#f1e6cc" />
-          <stop offset="1" stopColor="#c8ab7d" />
-        </radialGradient>
-        <radialGradient id="gradBlack" cx="0.38" cy="0.32" r="0.95">
-          <stop offset="0" stopColor="#7a6c5c" />
-          <stop offset="0.55" stopColor="#40362b" />
-          <stop offset="1" stopColor="#14100c" />
-        </radialGradient>
-        <filter id="pieceShadow" x="-40%" y="-40%" width="180%" height="180%">
-          <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.5" />
-        </filter>
         <filter id="pieceShadowSoft" x="-40%" y="-40%" width="180%" height="180%">
           <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.3" />
         </filter>
@@ -453,7 +389,7 @@ export function Board({
               fill="freeze"
             />
             <g transform={`translate(${px(fight.move.toX)} ${py(fight.move.toY)})`}>
-              <PieceShape piece={fight.piece} x={0} y={0} size={green ? 70 : 54} theme={theme} />
+              <PieceShape piece={fight.piece} x={0} y={0} size={70} />
             </g>
           </g>
           {fight.captured && (
@@ -463,7 +399,6 @@ export function Board({
               captured={fight.captured}
               fromX={px(fight.move.fromX)}
               fromY={py(fight.move.fromY)}
-              theme={theme}
             />
           )}
         </g>

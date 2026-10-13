@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Board } from "./Board";
+import { VectorPiece } from "./Pieces";
 import { MatchSocial } from "./MatchSocial";
 import { notifyPushTrigger } from "@/lib/push/client";
 import {
@@ -356,7 +357,9 @@ export function RoomMatchView({
                         doMove({ ...pendingPromo, promotion: pt })
                       }
                     >
-                      {pt}
+                      <svg viewBox="0 0 100 100" className="ch-promo-piece" aria-hidden="true">
+                        <VectorPiece type={pt} color={myColor ?? "white"} />
+                      </svg>
                     </button>
                   ))}
                 </div>

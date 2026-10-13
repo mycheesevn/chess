@@ -1,6 +1,51 @@
 // Canvas share card: renders the chess board + result headline to a PNG.
+// Pieces are drawn from the same vector path data as the in-app board
+// (PIECE_ART via Path2D), so the card matches the game's piece set.
 
-import { GLYPHS, type Board as BoardT, type Color } from "./types";
+import type { Board as BoardT, Color, PieceType } from "./types";
+import { PIECE_ART } from "./pieceArt";
+
+const CARD_PALETTES: Record<
+  Color,
+  { fill: string; stroke: string; detail: string; dot: string }
+> = {
+  white: { fill: "#FCFCFA", stroke: "#191919", detail: "#191919", dot: "#191919" },
+  black: { fill: "#26262A", stroke: "#26262A", detail: "#F2F2EE", dot: "#F2F2EE" },
+};
+
+function drawCardPiece(
+  ctx: CanvasRenderingContext2D,
+  type: PieceType,
+  color: Color,
+  cx: number,
+  cy: number,
+  size: number
+) {
+  const art = PIECE_ART[type];
+  const pal = CARD_PALETTES[color];
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(size / 100, size / 100);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  for (const d of art.body) {
+    const path = new Path2D(d);
+    ctx.fillStyle = pal.fill;
+    ctx.fill(path);
+    ctx.strokeStyle = pal.stroke;
+    ctx.lineWidth = 2.6;
+    ctx.stroke(path);
+  }
+  ctx.strokeStyle = pal.detail;
+  ctx.lineWidth = 2.1;
+  for (const d of art.details) ctx.stroke(new Path2D(d));
+  ctx.fillStyle = pal.dot;
+  for (const d of art.dots) ctx.fill(new Path2D(d));
+  if (color === "black" && art.onDark) {
+    for (const d of art.onDark) ctx.fill(new Path2D(d));
+  }
+  ctx.restore();
+}
 
 const SIZE = 1080;
 const BOARD_PAD = 90;
@@ -55,17 +100,14 @@ export async function renderShareCard(opts: ShareCardOpts): Promise<Blob> {
       ctx.fillRect(bx + rx * CELL, by + ry * CELL, CELL, CELL);
       const p = opts.board[y][x];
       if (p) {
-        ctx.font = `${CELL * 0.78}px serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        // outline for contrast
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = p.color === "white" ? "#43331f" : "#000";
-        const cx = bx + rx * CELL + CELL / 2;
-        const cy = by + ry * CELL + CELL / 2;
-        ctx.strokeText(GLYPHS[p.type], cx, cy);
-        ctx.fillStyle = p.color === "white" ? "#ffffff" : "#1a1a1a";
-        ctx.fillText(GLYPHS[p.type], cx, cy);
+        drawCardPiece(
+          ctx,
+          p.type,
+          p.color,
+          bx + rx * CELL + CELL / 2,
+          by + ry * CELL + CELL / 2,
+          CELL * 0.92
+        );
       }
     }
   }

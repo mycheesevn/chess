@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Board, type FightAnim } from "./Board";
+import { VectorPiece } from "./Pieces";
 import { Pagination, usePagination } from "./Pagination";
 import { burstConfetti } from "@/lib/chess/confetti";
 import { useAuth } from "./AuthProvider";
@@ -198,7 +199,11 @@ export function HistoryView({ lang }: { lang: Lang }) {
               {endedInCheckmate && (
                 <div className="ch-mate-overlay" aria-hidden="true">
                   <div className="ch-mate-banner">
-                    <span className="ch-mate-crown">♔</span>
+                    <span className="ch-mate-crown">
+                      <svg viewBox="0 0 100 100" aria-hidden="true">
+                        <VectorPiece type="K" color="white" />
+                      </svg>
+                    </span>
                     <span>{lang === "vi" ? "Chiếu hết!" : "Checkmate!"}</span>
                   </div>
                 </div>
