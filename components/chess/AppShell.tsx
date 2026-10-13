@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ChessGame } from "./ChessGame";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { ChessGame, type TcMs } from "./ChessGame";
+import { LEVELS } from "@/lib/chess/ai";
+import { STR } from "@/lib/chess/i18n";
+import { LEVEL_THRESHOLDS, levelForXp } from "@/lib/chess/levels";
+import {
+  setBoardTheme,
+  useBoardTheme,
+  type BoardTheme,
+} from "@/lib/chess/boardTheme";
 import { claimWelcome } from "@/lib/supabase/quests";
 import { CheckinView } from "./CheckinView";
 import { LeaderboardView } from "./LeaderboardView";
@@ -22,7 +30,7 @@ import {
 } from "@/lib/supabase/friends";
 import { useAuth } from "./AuthProvider";
 import { recordGameResult } from "@/lib/supabase/engagement";
-import type { Lang } from "@/lib/chess/types";
+import type { Color, Lang, Level } from "@/lib/chess/types";
 
 type View =
   | "play"
@@ -36,17 +44,44 @@ type View =
   | "puzzle"
   | "notifications";
 
+// Drawer modes in PacClone's fixed order (library/setup/community don't
+// exist in Chess yet). Friends and Notifications are NOT here — they live
+// in the avatar menu (no duplicate navigation).
 const NAV_ENTRIES: Array<{ view: View; icon: string; vi: string; en: string }> = [
-  { view: "play", icon: "♞", vi: "Chơi", en: "Play" },
-  { view: "puzzle", icon: "🧩", vi: "Đố", en: "Puzzle" },
+  { view: "play", icon: "", vi: "Đánh với máy", en: "Vs computer" },
+  { view: "puzzle", icon: "", vi: "Thế cờ hằng ngày", en: "Daily puzzle" },
+  { view: "history", icon: "", vi: "Lịch sử", en: "History" },
+  { view: "ranks", icon: "", vi: "Xếp hạng", en: "Leaderboard" },
   { view: "rooms", icon: "👥", vi: "Phòng chơi", en: "Rooms" },
-  { view: "friends", icon: "👤", vi: "Bạn bè", en: "Friends" },
   { view: "corr", icon: "✉️", vi: "Cờ thư", en: "Correspondence" },
   { view: "checkin", icon: "📅", vi: "Điểm danh", en: "Check-in" },
   { view: "quests", icon: "🌱", vi: "Nhiệm vụ", en: "Quests" },
-  { view: "ranks", icon: "🏆", vi: "Xếp hạng", en: "Ranks" },
-  { view: "history", icon: "📜", vi: "Lịch sử", en: "History" },
 ];
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => void;
+  userChoice: Promise<{ outcome: string }>;
+}
+
+/** Board style picker for the identity menus' Settings sections. */
+function BoardStyleField({ lang }: { lang: Lang }) {
+  const theme = useBoardTheme();
+  return (
+    <label className="ch-field">
+      <span>{lang === "vi" ? "Kiểu bàn cờ" : "Board style"}</span>
+      <select
+        value={theme}
+        onChange={(e) => setBoardTheme(e.target.value as BoardTheme)}
+        className="ch-select"
+      >
+        <option value="wood">{lang === "vi" ? "🪵 Gỗ" : "🪵 Wood"}</option>
+        <option value="green">
+          {lang === "vi" ? "🟩 Xanh lá" : "🟩 Green"}
+        </option>
+      </select>
+    </label>
+  );
+}
 
 export function AppShell() {
   const [view, setView] = useState<View>("play");
@@ -62,9 +97,9 @@ export function AppShell() {
   const [declinedToast, setDeclinedToast] = useState<string | null>(null);
   const [lang, setLangState] = useState<Lang>(() => {
     try {
-      return (localStorage.getItem("chess-lang") as Lang) || "en";
+      return (localStorage.getItem("chess-lang") as Lang) || "vi";
     } catch {
-      return "en";
+      return "vi";
     }
   });
   const {
@@ -91,6 +126,34 @@ export function AppShell() {
   const [pwMsg, setPwMsg] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
 
+  // Play configuration owned here — it lives in the drawer's play-settings
+  // section (PacClone pattern); ChessGame receives it as controlled props.
+  const [level, setLevel] = useState<Level>(5);
+  const [playerColor, setPlayerColor] = useState<Color>("white");
+  const [tcMs, setTcMs] = useState<TcMs>("none");
+  const [configNonce, setConfigNonce] = useState(0);
+  // PWA install prompt (drawer "Install app" section, only when available).
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", h);
+    return () => window.removeEventListener("beforeinstallprompt", h);
+  }, []);
+  const onInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    try {
+      await installPrompt.userChoice;
+    } catch {
+      /* ignore */
+    }
+    setInstallPrompt(null);
+  };
+
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
     try {
@@ -98,6 +161,7 @@ export function AppShell() {
     } catch {
       /* ignore */
     }
+    document.documentElement.lang = l;
   }, []);
 
   // Welcome bonus on first login
@@ -281,7 +345,17 @@ export function AppShell() {
   };
 
   const avatarUrl = profile?.avatar_url || null;
-  const avatarInitial = (displayName || "?").charAt(0).toUpperCase();
+  const s = STR[lang];
+  // Level + XP progress ring around the header avatar (PacClone pattern).
+  const myLevel = chessStats ? levelForXp(chessStats.xp) : 1;
+  const xpCurTh = LEVEL_THRESHOLDS[myLevel - 1] ?? 0;
+  const xpNextTh = LEVEL_THRESHOLDS[myLevel] ?? null;
+  const myLevelProg =
+    chessStats && xpNextTh && xpNextTh > xpCurTh
+      ? (chessStats.xp - xpCurTh) / (xpNextTh - xpCurTh)
+      : 1;
+  const myXpIntoLevel = chessStats ? chessStats.xp - xpCurTh : 0;
+  const myXpForNext = xpNextTh ? xpNextTh - xpCurTh : 1;
 
   return (
     <div className="ch-app">
@@ -302,9 +376,14 @@ export function AppShell() {
           {loading ? null : user ? (
             <div className="ch-user" role="group" aria-label="Account">
               {chessStats && (
-                <span className="ch-chip" title={lang === "vi" ? "Điểm" : "Rating"}>
-                  ⭐ {chessStats.rating} · ⚡{chessStats.xp}
-                </span>
+                <button
+                  type="button"
+                  className="ch-chip"
+                  onClick={() => go("ranks")}
+                  title={lang === "vi" ? "Xếp hạng" : "Leaderboard"}
+                >
+                  ⭐ {chessStats.rating} · Lv {myLevel}
+                </button>
               )}
               <button
                 type="button"
@@ -318,13 +397,19 @@ export function AppShell() {
                 {unreadCount > 0 && (
                   <span aria-hidden="true" className="ch-dot" />
                 )}
-                <span className="ch-account-avatar">
-                  {avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="" />
-                  ) : (
-                    avatarInitial
-                  )}
+                <span
+                  className="ch-level-ring"
+                  style={{ "--p": myLevelProg } as CSSProperties}
+                  title={`Lv ${myLevel} · ${myXpIntoLevel}/${myXpForNext} XP`}
+                >
+                  <span className="ch-account-avatar">
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt="" />
+                    ) : (
+                      "👤"
+                    )}
+                  </span>
                 </span>
                 <span className="ch-account-name">{displayName}</span>
                 <span aria-hidden="true" className="ch-caret">
@@ -344,7 +429,7 @@ export function AppShell() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={avatarUrl} alt="" />
                         ) : (
-                          avatarInitial
+                          "👤"
                         )}
                       </span>
                       <div className="ch-account-menu-id">
@@ -369,6 +454,14 @@ export function AppShell() {
                       type="button"
                       role="menuitem"
                       className="ch-account-menu-item"
+                      onClick={() => go("friends")}
+                    >
+                      👤 {lang === "vi" ? "Bạn bè" : "Friends"}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
                       aria-expanded={settingsExpanded}
                       onClick={() => setSettingsExpanded((v) => !v)}
                     >
@@ -379,6 +472,27 @@ export function AppShell() {
                     </button>
                     {settingsExpanded && (
                       <div className="ch-account-menu-settings">
+                        <div
+                          className="ch-lang"
+                          role="group"
+                          aria-label="Language / Ngôn ngữ"
+                        >
+                          <button
+                            type="button"
+                            className={lang === "en" ? "active" : ""}
+                            onClick={() => setLang("en")}
+                          >
+                            EN
+                          </button>
+                          <button
+                            type="button"
+                            className={lang === "vi" ? "active" : ""}
+                            onClick={() => setLang("vi")}
+                          >
+                            VI
+                          </button>
+                        </div>
+                        <BoardStyleField lang={lang} />
                         <PushSettings lang={lang} />
                       </div>
                     )}
@@ -456,7 +570,27 @@ export function AppShell() {
                   />
                   <div className="ch-account-menu" role="menu">
                     <div className="ch-account-menu-settings">
-                      <PushSettings lang={lang} />
+                      <div
+                        className="ch-lang"
+                        role="group"
+                        aria-label="Language / Ngôn ngữ"
+                      >
+                        <button
+                          type="button"
+                          className={lang === "en" ? "active" : ""}
+                          onClick={() => setLang("en")}
+                        >
+                          EN
+                        </button>
+                        <button
+                          type="button"
+                          className={lang === "vi" ? "active" : ""}
+                          onClick={() => setLang("vi")}
+                        >
+                          VI
+                        </button>
+                      </div>
+                      <BoardStyleField lang={lang} />
                     </div>
                     <button
                       type="button"
@@ -498,10 +632,10 @@ export function AppShell() {
           />
           <aside className="ch-drawer" role="dialog" aria-label="Menu">
             <div className="ch-drawer-head">
-              <strong>☰ {lang === "vi" ? "Mục" : "Menu"}</strong>
+              <strong>Menu</strong>
               <button
                 type="button"
-                className="ch-btn ch-btn-sm"
+                className="ch-btn ch-btn-icon"
                 onClick={() => setMenuOpen(false)}
                 aria-label={lang === "vi" ? "Đóng" : "Close"}
               >
@@ -510,8 +644,8 @@ export function AppShell() {
             </div>
             <div className="ch-drawer-body">
               <section>
-                <h2>{lang === "vi" ? "Chơi" : "Play"}</h2>
-                <div className="ch-drawer-modes" role="tablist" aria-label="Menu">
+                <h2>{lang === "vi" ? "Chế độ" : "Mode"}</h2>
+                <div className="ch-drawer-modes" role="tablist" aria-label="Mode">
                   {NAV_ENTRIES.map((e) => (
                     <button
                       key={e.view}
@@ -521,69 +655,142 @@ export function AppShell() {
                       data-active={view === e.view}
                       onClick={() => go(e.view)}
                     >
-                      {e.icon} {lang === "vi" ? e.vi : e.en}
+                      {e.icon ? `${e.icon} ` : ""}
+                      {lang === "vi" ? e.vi : e.en}
                     </button>
                   ))}
                 </div>
               </section>
               <section>
-                <h2>{lang === "vi" ? "Ngôn ngữ / Language" : "Language / Ngôn ngữ"}</h2>
-                <div className="ch-lang" role="group" aria-label="Language / Ngôn ngữ">
-                  <button
-                    type="button"
-                    className={lang === "en" ? "active" : ""}
-                    onClick={() => setLang("en")}
-                  >
-                    EN
-                  </button>
-                  <button
-                    type="button"
-                    className={lang === "vi" ? "active" : ""}
-                    onClick={() => setLang("vi")}
-                  >
-                    VI
-                  </button>
+                <h2>{lang === "vi" ? "📖 Hướng dẫn" : "📖 Guides"}</h2>
+                <div className="ch-drawer-modes">
+                  <a href="/blog" className="ch-blog-drawer-link">
+                    {lang === "vi" ? "📖 Hướng dẫn" : "📖 Guides"}
+                  </a>
                 </div>
               </section>
+              {installPrompt && (
+                <section>
+                  <div className="ch-drawer-modes">
+                    <button
+                      type="button"
+                      className="ch-btn ch-btn-primary"
+                      onClick={onInstallClick}
+                    >
+                      {lang === "vi" ? "📲 Cài ứng dụng" : "📲 Install app"}
+                    </button>
+                  </div>
+                </section>
+              )}
+              {view === "play" && (
+                <section>
+                  <h2>{lang === "vi" ? "Cài đặt" : "Settings"}</h2>
+                  <label className="ch-field">
+                    <span>{s.level}</span>
+                    <select
+                      value={level}
+                      onChange={(e) => setLevel(Number(e.target.value))}
+                      className="ch-select"
+                    >
+                      {LEVELS.map((l) => (
+                        <option key={l.level} value={l.level}>
+                          {s.levelLabel(l.level)} — {s.levelDesc[l.level - 1]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="ch-field">
+                    <span>{s.youPlay}</span>
+                    <select
+                      value={playerColor}
+                      onChange={(e) => {
+                        setPlayerColor(e.target.value as Color);
+                        setConfigNonce((n) => n + 1);
+                      }}
+                      className="ch-select"
+                    >
+                      <option value="white">{s.whiteFirst}</option>
+                      <option value="black">{s.blackSecond}</option>
+                    </select>
+                  </label>
+                  <label className="ch-field">
+                    <span>{s.timeControl}</span>
+                    <select
+                      value={tcMs === "none" ? "none" : String(tcMs)}
+                      onChange={(e) => {
+                        setTcMs(
+                          e.target.value === "none"
+                            ? "none"
+                            : Number(e.target.value)
+                        );
+                        setConfigNonce((n) => n + 1);
+                      }}
+                      className="ch-select"
+                    >
+                      <option value="none">{s.noTimeControl}</option>
+                      <option value={60000}>{s.minutes(1)}</option>
+                      <option value={180000}>{s.minutes(3)}</option>
+                      <option value={300000}>{s.minutes(5)}</option>
+                      <option value={600000}>{s.minutes(10)}</option>
+                    </select>
+                  </label>
+                </section>
+              )}
             </div>
           </aside>
         </div>
       )}
 
-      {view === "play" && <ChessGame onGameEnd={handleGameEnd} lang={lang} setLang={setLang} />}
-      {view === "checkin" && <CheckinView lang={lang} />}
-      {view === "ranks" && <LeaderboardView lang={lang} />}
-      {view === "rooms" && (
-        <RoomView
+      {view === "play" && (
+        <ChessGame
+          onGameEnd={handleGameEnd}
           lang={lang}
-          initialRoomId={pendingRoomId}
-          onInitialConsumed={() => setPendingRoomId(null)}
+          level={level}
+          onLevelChange={setLevel}
+          playerColor={playerColor}
+          onPlayerColorChange={setPlayerColor}
+          tcMs={tcMs}
+          onTcChange={setTcMs}
+          configNonce={configNonce}
         />
       )}
-      {view === "friends" && (
-        <FriendsView
-          lang={lang}
-          highlightChallengeId={deepLinkChallengeId}
-          onHighlightConsumed={() => setDeepLinkChallengeId(null)}
-          onOpenRoom={(id) => {
-            setPendingRoomId(id);
-            setView("rooms");
-          }}
-        />
+      {view !== "play" && (
+        <div className="ch-scroll-area">
+          {view === "checkin" && <CheckinView lang={lang} />}
+          {view === "ranks" && <LeaderboardView lang={lang} />}
+          {view === "rooms" && (
+            <RoomView
+              lang={lang}
+              initialRoomId={pendingRoomId}
+              onInitialConsumed={() => setPendingRoomId(null)}
+            />
+          )}
+          {view === "friends" && (
+            <FriendsView
+              lang={lang}
+              highlightChallengeId={deepLinkChallengeId}
+              onHighlightConsumed={() => setDeepLinkChallengeId(null)}
+              onOpenRoom={(id) => {
+                setPendingRoomId(id);
+                setView("rooms");
+              }}
+            />
+          )}
+          {view === "history" && <HistoryView lang={lang} />}
+          {view === "quests" && <QuestsView lang={lang} />}
+          {view === "notifications" && (
+            <NotificationsView lang={lang} onChanged={refreshUnread} />
+          )}
+          {view === "corr" && (
+            <CorrView
+              lang={lang}
+              initialGameId={deepLinkCorrId}
+              onInitialConsumed={() => setDeepLinkCorrId(null)}
+            />
+          )}
+          {view === "puzzle" && <PuzzleView lang={lang} />}
+        </div>
       )}
-      {view === "history" && <HistoryView lang={lang} />}
-      {view === "quests" && <QuestsView lang={lang} />}
-      {view === "notifications" && (
-        <NotificationsView lang={lang} onChanged={refreshUnread} />
-      )}
-      {view === "corr" && (
-        <CorrView
-          lang={lang}
-          initialGameId={deepLinkCorrId}
-          onInitialConsumed={() => setDeepLinkCorrId(null)}
-        />
-      )}
-      {view === "puzzle" && <PuzzleView lang={lang} />}
       {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}
       {declinedToast && <div className="ch-toast">{declinedToast}</div>}
       {incomingChallenge && (

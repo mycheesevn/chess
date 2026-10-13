@@ -8,7 +8,6 @@ import {
   analyzePosition,
   findBestMove,
   getLevelConfig,
-  LEVELS,
   type SearchStats,
 } from "@/lib/chess/ai";
 import {
@@ -46,7 +45,7 @@ interface Snapshot {
   clocksMs: { white: number; black: number } | null;
 }
 
-type TcMs = "none" | number;
+export type TcMs = "none" | number;
 
 interface InProgress {
   v: 1;
@@ -227,7 +226,13 @@ function findKing(board: BoardT, color: Color): { x: number; y: number } | null 
 export function ChessGame({
   onGameEnd,
   lang,
-  setLang,
+  level,
+  onLevelChange,
+  playerColor,
+  onPlayerColorChange,
+  tcMs,
+  onTcChange,
+  configNonce,
 }: {
   onGameEnd?: (
     result: "win" | "loss" | "draw",
@@ -237,11 +242,22 @@ export function ChessGame({
     uciMoves: string
   ) => void;
   lang: Lang;
-  setLang: (l: Lang) => void;
+  // Play configuration (level / side / time control) is owned by AppShell —
+  // it lives in the drawer's play-settings section (PacClone pattern).
+  // The setters keep their familiar names via the aliases below.
+  level: Level;
+  onLevelChange: (l: Level) => void;
+  playerColor: Color;
+  onPlayerColorChange: (c: Color) => void;
+  tcMs: TcMs;
+  onTcChange: (tc: TcMs) => void;
+  /** Bumped by AppShell when the drawer changes side/time → start a new game. */
+  configNonce: number;
 }) {
   const [state, setState] = useState<GameState>(freshState);
-  const [playerColor, setPlayerColor] = useState<Color>("white");
-  const [level, setLevel] = useState<Level>(5);
+  const setLevel = onLevelChange;
+  const setPlayerColor = onPlayerColorChange;
+  const setTcMs = onTcChange;
   const [thinking, setThinking] = useState(false);
   const [aiStats, setAiStats] = useState<SearchStats | null>(null);
   const [fight, setFight] = useState<FightAnim | null>(null);
@@ -260,7 +276,6 @@ export function ChessGame({
   });
   const evalGen = useRef(0);
   // Blitz clocks.
-  const [tcMs, setTcMs] = useState<TcMs>("none");
   const [clocksMs, setClocksMs] = useState<{ white: number; black: number } | null>(null);
   const clocksMsRef = useRef(clocksMs);
   clocksMsRef.current = clocksMs;
@@ -652,6 +667,15 @@ export function ChessGame({
     [tcMs, clearHint]
   );
 
+  // Drawer play-settings: when AppShell bumps configNonce (side or time
+  // control changed in the drawer), start a fresh game with the new config.
+  const seenNonce = useRef(configNonce);
+  useEffect(() => {
+    if (seenNonce.current === configNonce) return;
+    seenNonce.current = configNonce;
+    newGame(playerColor, tcMs);
+  }, [configNonce, newGame, playerColor, tcMs]);
+
   const captured = useMemo(() => {
     const remaining: Record<Color, Record<PieceType, number>> = {
       white: { K: 0, Q: 0, R: 0, B: 0, N: 0, P: 0 },
@@ -712,104 +736,45 @@ export function ChessGame({
 
   return (
     <div className="ch-page">
-      <header className="ch-header">
-        <div className="ch-brand">
-          <h1 className="ch-title">{s.title}</h1>
-          <p className="ch-subtitle">{s.subtitle}</p>
-        </div>
-        <div className="ch-controls">
-          <div className="ch-lang" role="group" aria-label="Language / Ngôn ngữ">
-            <button
-              type="button"
-              className={lang === "en" ? "active" : ""}
-              onClick={() => setLang("en")}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              className={lang === "vi" ? "active" : ""}
-              onClick={() => setLang("vi")}
-            >
-              VI
-            </button>
-          </div>
-          <label className="ch-field">
-            <span>{s.timeControl}</span>
-            <select
-              value={tcMs === "none" ? "none" : String(tcMs)}
-              onChange={(e) => {
-                const v: TcMs =
-                  e.target.value === "none" ? "none" : Number(e.target.value);
-                setTcMs(v);
-                newGame(playerColor, v);
-              }}
-              className="ch-select"
-              title={lang === "vi" ? "Đổi giờ sẽ bắt đầu ván mới" : "Changing time starts a new game"}
-            >
-              <option value="none">{s.noTimeControl}</option>
-              <option value={60000}>{s.minutes(1)}</option>
-              <option value={180000}>{s.minutes(3)}</option>
-              <option value={300000}>{s.minutes(5)}</option>
-              <option value={600000}>{s.minutes(10)}</option>
-            </select>
-          </label>
-          <label className="ch-field">
-            <span>{s.level}</span>
-            <select
-              value={level}
-              onChange={(e) => setLevel(Number(e.target.value))}
-              className="ch-select"
-            >
-              {LEVELS.map((l) => (
-                <option key={l.level} value={l.level}>
-                  {s.levelLabel(l.level)} — {s.levelDesc[l.level - 1]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="ch-field">
-            <span>{s.youPlay}</span>
-            <select
-              value={playerColor}
-              onChange={(e) => newGame(e.target.value as Color)}
-              className="ch-select"
-            >
-              <option value="white">{s.whiteFirst}</option>
-              <option value="black">{s.blackSecond}</option>
-            </select>
-          </label>
-          <div className="ch-buttons">
-            <button
-              type="button"
-              className="ch-btn"
-              onClick={doHint}
-              disabled={
-                thinking || !!fight || !!state.gameOver ||
-                state.turn !== playerColor || hintThinking
-              }
-              title={s.hint}
-            >
-              {hintThinking ? s.hintBusy : s.hint}
-            </button>
-            <button
-              type="button"
-              className="ch-btn"
-              onClick={undo}
-              disabled={thinking || !!fight || state.history.length === 0}
-            >
-              {s.undo}
-            </button>
-            <button
-              type="button"
-              className="ch-btn ch-btn-primary"
-              onClick={() => newGame(playerColor)}
-            >
-              {s.newGame}
-            </button>
-          </div>
-        </div>
-      </header>
+      <div className="ch-quick">
+        <button
+          type="button"
+          className="ch-btn"
+          onClick={undo}
+          disabled={thinking || !!fight || state.history.length === 0}
+        >
+          ↩ {s.undo}
+        </button>
+        <button
+          type="button"
+          className="ch-btn"
+          onClick={() => newGame(opposite(playerColor))}
+          disabled={thinking || !!fight || state.gameOver !== null}
+          title={s.switchSides}
+        >
+          {s.switchSides}
+        </button>
+        <button
+          type="button"
+          className="ch-btn"
+          onClick={doHint}
+          disabled={
+            thinking || !!fight || !!state.gameOver ||
+            state.turn !== playerColor || hintThinking
+          }
+          title={s.hint}
+        >
+          {hintThinking ? s.hintBusy : s.hint}
+        </button>
+        <span className="ch-quick-spacer" />
+        <button
+          type="button"
+          className="ch-btn ch-btn-primary"
+          onClick={() => newGame(playerColor)}
+        >
+          ＋ {s.newGame}
+        </button>
+      </div>
 
       <div
         className={`ch-status ${state.gameOver ? "ch-status-over" : ""} ${
