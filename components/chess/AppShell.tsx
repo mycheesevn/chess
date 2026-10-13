@@ -16,6 +16,9 @@ import { LeaderboardView } from "./LeaderboardView";
 import { RoomView } from "./RoomView";
 import { FriendsView } from "./FriendsView";
 import { HistoryView } from "./HistoryView";
+import { SetupView } from "./SetupView";
+import { LibraryView } from "./LibraryView";
+import { positionToFen } from "@/lib/chess/fen";
 import { AuthModal } from "./AuthModal";
 import { isMuted, setMuted } from "@/lib/chess/sound";
 import {
@@ -36,7 +39,7 @@ import {
 } from "@/lib/supabase/friends";
 import { useAuth } from "./AuthProvider";
 import { recordGameResult } from "@/lib/supabase/engagement";
-import type { Color, Lang, Level } from "@/lib/chess/types";
+import type { Board as BoardT, Color, Lang, Level } from "@/lib/chess/types";
 
 type View =
   | "play"
@@ -48,14 +51,18 @@ type View =
   | "quests"
   | "corr"
   | "puzzle"
+  | "library"
+  | "setup"
   | "notifications";
 
-// Drawer modes in PacClone's fixed order (library/setup/community don't
+// Drawer modes in PacClone's fixed order (community doesn't
 // exist in Chess yet). Friends and Notifications are NOT here — they live
 // in the avatar menu (no duplicate navigation).
 const NAV_ENTRIES: Array<{ view: View; icon: string; vi: string; en: string }> = [
   { view: "play", icon: "", vi: "Đánh với máy", en: "Vs computer" },
   { view: "puzzle", icon: "", vi: "Thế cờ hằng ngày", en: "Daily puzzle" },
+  { view: "library", icon: "📚", vi: "Thư viện bí kíp", en: "Playbook library" },
+  { view: "setup", icon: "🧩", vi: "Sắp xếp bàn cờ", en: "Board setup" },
   { view: "history", icon: "", vi: "Lịch sử", en: "History" },
   { view: "ranks", icon: "", vi: "Xếp hạng", en: "Leaderboard" },
   { view: "rooms", icon: "👥", vi: "Phòng chơi", en: "Rooms" },
@@ -138,6 +145,7 @@ export function AppShell() {
   );
   // Room id to auto-open when the rooms view appears (challenge accept).
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
+  const [deepLinkRoomCode, setDeepLinkRoomCode] = useState<string | null>(null);
   // Realtime incoming challenge popup.
   const [incomingChallenge, setIncomingChallenge] =
     useState<IncomingChallenge | null>(null);
@@ -179,6 +187,22 @@ export function AppShell() {
   const [playerColor, setPlayerColor] = useState<Color>("white");
   const [tcMs, setTcMs] = useState<TcMs>("none");
   const [configNonce, setConfigNonce] = useState(0);
+  // One-shot custom position handed from SetupView to ChessGame.
+  const [customStart, setCustomStart] = useState<{
+    fen: string;
+    nonce: number;
+  } | null>(null);
+  const handleCustomPlay = useCallback(
+    (board: BoardT, color: Color, turn: Color) => {
+      setPlayerColor(color);
+      setCustomStart({ fen: positionToFen(board, turn), nonce: Date.now() });
+      setView("play");
+    },
+    []
+  );
+  const handleCustomStartConsumed = useCallback((nonce: number) => {
+    setCustomStart((current) => (current?.nonce === nonce ? null : current));
+  }, []);
   // PWA install prompt (drawer "Install app" section, only when available).
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
@@ -309,7 +333,8 @@ export function AppShell() {
     })();
   }, [user, refreshProfile]);
 
-  // Handle ?corr=<uuid> and ?challenge=<uuid> deep links (from push notifications).
+  // Handle ?room=CODE, ?corr=<uuid> and ?challenge=<uuid> deep links (from
+  // push notifications and invite links).
   // Runs on mount AND on window focus: tapping a notification while the app
   // is already open makes the service worker navigate the existing tab, so a
   // mount-only parser would miss it and the tap would appear to do nothing.
@@ -318,8 +343,13 @@ export function AppShell() {
       const q = new URLSearchParams(window.location.search);
       const corr = q.get("corr");
       const challenge = q.get("challenge");
+      const room = q.get("room");
       let consumed = false;
-      if (corr && /^[0-9a-f-]{36}$/i.test(corr)) {
+      if (room && /^[A-Za-z0-9]{6}$/.test(room)) {
+        setDeepLinkRoomCode(room.toUpperCase());
+        setView("rooms");
+        consumed = true;
+      } else if (corr && /^[0-9a-f-]{36}$/i.test(corr)) {
         setDeepLinkCorrId(corr);
         setView("corr");
         consumed = true;
@@ -355,11 +385,12 @@ export function AppShell() {
     color: "white" | "black",
     level: number,
     plies: number,
-    uciMoves: string
+    uciMoves: string,
+    startFen: string
   ) => {
     if (!user) return; // guests don't earn XP
     try {
-      await recordGameResult(color, level, result, plies, uciMoves);
+      await recordGameResult(color, level, result, plies, uciMoves, startFen);
       await refreshProfile();
     } catch {
       /* offline or not configured — skip silently */
@@ -800,9 +831,11 @@ export function AppShell() {
           tcMs={tcMs}
           onTcChange={setTcMs}
           configNonce={configNonce}
+          customStart={customStart}
+          onCustomStartConsumed={handleCustomStartConsumed}
         />
       )}
-      {view !== "play" && view !== "history" && view !== "puzzle" && (
+      {view !== "play" && view !== "history" && view !== "puzzle" && view !== "setup" && view !== "library" && (
         <div className="ch-scroll-area">
           {view === "checkin" && <CheckinView lang={lang} />}
           {view === "ranks" && <LeaderboardView lang={lang} />}
@@ -811,6 +844,9 @@ export function AppShell() {
               lang={lang}
               initialRoomId={pendingRoomId}
               onInitialConsumed={() => setPendingRoomId(null)}
+              initialRoomCode={deepLinkRoomCode}
+              onRoomCodeConsumed={() => setDeepLinkRoomCode(null)}
+              onRequireLogin={() => setAuthOpen("in")}
             />
           )}
           {view === "friends" && (
@@ -837,10 +873,13 @@ export function AppShell() {
           )}
         </div>
       )}
-      {/* History and puzzle own their roots: their boards use the full play
-          layout so they render at the same size as the play board. */}
+      {/* History, puzzle, setup, and library own their roots: their boards
+          use the full play layout so they render at the same size as the
+          play board. */}
       {view === "history" && <HistoryView lang={lang} />}
       {view === "puzzle" && <PuzzleView lang={lang} />}
+      {view === "setup" && <SetupView lang={lang} onPlay={handleCustomPlay} />}
+      {view === "library" && <LibraryView lang={lang} />}
       {authOpen && (
         <AuthModal
           lang={lang}

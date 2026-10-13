@@ -5,6 +5,11 @@ import { Board, type FightAnim } from "./Board";
 import { GameOverPanel } from "./GameOverPanel";
 import { EvalBar } from "./EvalBar";
 import { burstConfetti } from "@/lib/chess/confetti";
+import { VideoExportModal, type VideoGame } from "./VideoExportModal";
+import {
+  recordChessGameEvent,
+  type ChessGameEventMeta,
+} from "@/lib/supabase/stats";
 import {
   playCapture,
   playCheck,
@@ -30,6 +35,12 @@ import {
   legalMovesForSquare,
 } from "@/lib/chess/engine";
 import { STR } from "@/lib/chess/i18n";
+import {
+  parseFen,
+  startPositionFromFen,
+  STANDARD_START_FEN,
+  type ParsedFen,
+} from "@/lib/chess/fen";
 import { toSAN } from "@/lib/chess/notation";
 import { moveToUci, uciToMove } from "@/lib/chess/uci";
 import {
@@ -65,6 +76,8 @@ interface InProgress {
   playerColor: Color;
   tcMs: TcMs;
   clocksMs: { white: number; black: number } | null;
+  /** FEN of the position this game started from (custom setup games). */
+  startFen?: string;
 }
 
 const IN_PROGRESS_KEY = "chess-in-progress";
@@ -143,14 +156,48 @@ function freshState(): GameState {
   };
 }
 
+/** Build the opening game state for a standard or custom start position. */
+function stateFromStart(start: ParsedFen): GameState {
+  const status = gameStatus(
+    start.board,
+    start.turn,
+    start.castling,
+    start.ep,
+    start.halfmove
+  );
+  return {
+    board: start.board,
+    turn: start.turn,
+    castling: { ...start.castling },
+    ep: start.ep,
+    halfmove: start.halfmove,
+    lastMove: null,
+    log: [],
+    uciLog: [],
+    history: [],
+    selected: null,
+    pendingPromotion: null,
+    inCheck: !status.over && inCheck(start.board, start.turn),
+    gameOver: status.over
+      ? {
+          kind: status.kind,
+          winner: status.kind === "checkmate" ? status.winner : null,
+        }
+      : null,
+  };
+}
+
 /** Rebuild a full game state by replaying a saved UCI move list. */
-function restoreGame(saved: InProgress, lang: Lang): GameState {
-  const st = freshState();
-  let board = st.board;
-  let castling = { ...INITIAL_CASTLING };
-  let ep: { x: number; y: number } | null = null;
-  let halfmove = 0;
-  let turn: Color = "white";
+function restoreGame(
+  saved: InProgress,
+  lang: Lang,
+  start: ParsedFen = startPositionFromFen(saved.startFen)
+): GameState {
+  let board = start.board;
+  let castling = { ...start.castling };
+  let ep: { x: number; y: number } | null = start.ep;
+  let halfmove = start.halfmove;
+  let turn: Color = start.turn;
   let lastMove: Move | null = null;
   const log: string[] = [];
   const uciLog: string[] = [];
@@ -244,13 +291,16 @@ export function ChessGame({
   tcMs,
   onTcChange,
   configNonce,
+  customStart = null,
+  onCustomStartConsumed,
 }: {
   onGameEnd?: (
     result: "win" | "loss" | "draw",
     color: "white" | "black",
     level: number,
     plies: number,
-    uciMoves: string
+    uciMoves: string,
+    startFen: string
   ) => void;
   lang: Lang;
   // Play configuration (level / side / time control) is owned by AppShell —
@@ -264,8 +314,18 @@ export function ChessGame({
   onTcChange: (tc: TcMs) => void;
   /** Bumped by AppShell when the drawer changes side/time → start a new game. */
   configNonce: number;
+  /** One-shot custom position requested from the board setup editor. */
+  customStart?: { fen: string; nonce: number } | null;
+  /** Called once an initial/nonce custom start has been taken over. */
+  onCustomStartConsumed?: (nonce: number) => void;
 }) {
-  const [state, setState] = useState<GameState>(freshState);
+  const initialCustomStartRef = useRef(customStart);
+  const [initialStart] = useState<ParsedFen>(() =>
+    startPositionFromFen(initialCustomStartRef.current?.fen)
+  );
+  const gameStartRef = useRef<ParsedFen>(initialStart);
+  const gameStartFenRef = useRef(initialStart.fen);
+  const [state, setState] = useState<GameState>(() => stateFromStart(initialStart));
   const setLevel = onLevelChange;
   const setPlayerColor = onPlayerColorChange;
   const setTcMs = onTcChange;
@@ -276,6 +336,20 @@ export function ChessGame({
   // Big "CHECK!" banner overlay key (user setting — off by default).
   const [checkBannerKey, setCheckBannerKey] = useState(0);
   const reportedEnd = useRef<string | number>(0);
+  // Site statistics (skill: stats.md) — "start" fires on the first move
+  // of a game, "finish" with the game-over report, "abandon" when a
+  // started game is left via newGame. Meta mirrors the current settings.
+  const statsStartedRef = useRef(false);
+  const statsMetaRef = useRef<ChessGameEventMeta>({});
+  // Replay video export (skill: replay-video.md).
+  const [videoGame, setVideoGame] = useState<VideoGame | null>(null);
+  useEffect(() => {
+    statsMetaRef.current = {
+      level,
+      playerColor,
+      timeControl: tcMs === "none" ? null : Math.round(tcMs / 1000),
+    };
+  }, [level, playerColor, tcMs]);
   // Hint.
   const [hintMove, setHintMove] = useState<Move | null>(null);
   const [hintThinking, setHintThinking] = useState(false);
@@ -289,7 +363,12 @@ export function ChessGame({
   });
   const evalGen = useRef(0);
   // Blitz clocks.
-  const [clocksMs, setClocksMs] = useState<{ white: number; black: number } | null>(null);
+  const [clocksMs, setClocksMs] = useState<{ white: number; black: number } | null>(
+    () =>
+      initialCustomStartRef.current && tcMs !== "none"
+        ? { white: tcMs, black: tcMs }
+        : null
+  );
   const clocksMsRef = useRef(clocksMs);
   clocksMsRef.current = clocksMs;
   // Resume.
@@ -303,6 +382,43 @@ export function ChessGame({
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  /** Open the video-export modal for the just-finished game. */
+  const openVideoExport = useCallback(() => {
+    const st = stateRef.current;
+    const go = st.gameOver;
+    if (!go || st.uciLog.length === 0) return;
+    const won =
+      (go.kind === "checkmate" || go.kind === "flag") &&
+      go.winner === playerColor;
+    const draw = go.kind !== "checkmate" && go.kind !== "flag";
+    const title = won
+      ? lang === "vi"
+        ? `Tôi đã thắng máy Cấp ${level}! 🏆`
+        : `I beat the computer (Level ${level})! 🏆`
+      : draw
+        ? lang === "vi"
+          ? "Hòa! 🤝"
+          : "It's a draw! 🤝"
+        : lang === "vi"
+          ? "Thua một ván hay! 💪"
+          : "Lost a good game! 💪";
+    setVideoGame({
+      ucis: [...st.uciLog],
+      startBoard: gameStartRef.current.board,
+      startCastling: gameStartRef.current.castling,
+      startEp: gameStartRef.current.ep,
+      startTurn: gameStartRef.current.turn,
+      startHalfmove: gameStartRef.current.halfmove,
+      playerColor,
+      title,
+      subtitle:
+        lang === "vi"
+          ? `${st.uciLog.length} nước · Cấp ${level}`
+          : `${st.uciLog.length} moves · Level ${level}`,
+      shareUrl: window.location.origin,
+    });
+  }, [lang, level, playerColor]);
+
   const clearHint = useCallback(() => {
     if (hintTimer.current) window.clearTimeout(hintTimer.current);
     setHintMove(null);
@@ -310,12 +426,30 @@ export function ChessGame({
     setHintThinking(false);
   }, []);
 
-  // Resume an in-progress game (auto-saved on every move).
+  // Resume an in-progress game (auto-saved on every move). A custom-start
+  // request takes precedence: it is a one-shot handoff from Setup, so any
+  // older saved game is discarded and the request is consumed immediately.
   useEffect(() => {
+    const requested = initialCustomStartRef.current;
+    if (requested) {
+      clearSaved();
+      setClocksMs(
+        tcMs === "none" ? null : { white: tcMs, black: tcMs }
+      );
+      onCustomStartConsumed?.(requested.nonce);
+      return;
+    }
     const saved = loadProgress();
-    if (!saved || saved.uciLog.length === 0) return;
+    if (!saved) return;
+    const savedStart = startPositionFromFen(saved.startFen);
+    // A zero-move save only matters for a custom start; a standard game
+    // is already represented by the initial state.
+    if (saved.uciLog.length === 0 && savedStart.fen === STANDARD_START_FEN) return;
     try {
-      const restored = restoreGame(saved, lang);
+      const start = savedStart;
+      gameStartRef.current = start;
+      gameStartFenRef.current = start.fen;
+      const restored = restoreGame(saved, lang, start);
       setLevel(Math.min(12, Math.max(1, Math.round(saved.level) || 5)));
       setPlayerColor(saved.playerColor === "black" ? "black" : "white");
       setTcMs(saved.tcMs);
@@ -357,7 +491,15 @@ export function ChessGame({
           ? "win"
           : "loss"
         : "draw";
-    onGameEnd(result, playerColor, level, state.log.length, state.uciLog.join(" "));
+    onGameEnd(
+      result,
+      playerColor,
+      level,
+      state.log.length,
+      state.uciLog.join(" "),
+      gameStartFenRef.current
+    );
+    recordChessGameEvent("finish", { ...statsMetaRef.current, result });
     // Party popper + fanfare when the player wins by checkmate (skill:
     // excitement.md). Sad trombone when the computer mates the player.
     if (go.kind === "checkmate") {
@@ -376,6 +518,11 @@ export function ChessGame({
       if (prev.gameOver) return;
       const piece = prev.board[move.fromY][move.fromX];
       if (!piece) return;
+      // Statistics: a game counts as a "play" on its first move.
+      if (!statsStartedRef.current) {
+        statsStartedRef.current = true;
+        recordChessGameEvent("start", statsMetaRef.current);
+      }
 
       // Captured piece (needed for the fight animation).
       let captured: Piece | null = prev.board[move.toY][move.toX];
@@ -450,6 +597,7 @@ export function ChessGame({
           playerColor,
           tcMs,
           clocksMs: clocksMsRef.current,
+          startFen: gameStartFenRef.current,
         });
 
       // Choreograph the fight animation.
@@ -666,6 +814,7 @@ export function ChessGame({
       playerColor,
       tcMs,
       clocksMs: snap.clocksMs,
+      startFen: gameStartFenRef.current,
     });
     setState({
       ...prev,
@@ -687,6 +836,11 @@ export function ChessGame({
 
   const newGame = useCallback(
     (color: Color, tc?: TcMs) => {
+      // Statistics: leaving a started but unfinished game = abandoned.
+      if (statsStartedRef.current && !stateRef.current.gameOver) {
+        recordChessGameEvent("abandon", statsMetaRef.current);
+      }
+      statsStartedRef.current = false;
       if (fightTimer.current) window.clearTimeout(fightTimer.current);
       const t = tc ?? tcMs;
       setPlayerColor(color);
@@ -696,6 +850,9 @@ export function ChessGame({
       setClocksMs(t === "none" ? null : { white: t, black: t });
       clearHint();
       clearSaved();
+      const start = startPositionFromFen(null);
+      gameStartRef.current = start;
+      gameStartFenRef.current = start.fen;
       setState(freshState());
     },
     [tcMs, clearHint]
@@ -709,6 +866,39 @@ export function ChessGame({
     seenNonce.current = configNonce;
     newGame(playerColor, tcMs);
   }, [configNonce, newGame, playerColor, tcMs]);
+
+  // Board setup editor: a new customStart nonce replaces the current game.
+  // (The initial mount case is already reflected in the initial state and
+  // consumed by the resume effect above.)
+  const seenCustomNonce = useRef(customStart?.nonce ?? 0);
+  useEffect(() => {
+    if (!customStart || seenCustomNonce.current === customStart.nonce) return;
+    seenCustomNonce.current = customStart.nonce;
+    let start: ParsedFen;
+    try {
+      start = parseFen(customStart.fen);
+    } catch {
+      onCustomStartConsumed?.(customStart.nonce);
+      return;
+    }
+    if (statsStartedRef.current && !stateRef.current.gameOver) {
+      recordChessGameEvent("abandon", statsMetaRef.current);
+    }
+    statsStartedRef.current = false;
+    if (fightTimer.current) window.clearTimeout(fightTimer.current);
+    setPlayerColor(playerColor);
+    setThinking(false);
+    setAiStats(null);
+    setFight(null);
+    setClocksMs(tcMs === "none" ? null : { white: tcMs, black: tcMs });
+    clearHint();
+    clearSaved();
+    reportedEnd.current = `custom:${customStart.nonce}`;
+    gameStartRef.current = start;
+    gameStartFenRef.current = start.fen;
+    setState(stateFromStart(start));
+    onCustomStartConsumed?.(customStart.nonce);
+  }, [customStart, onCustomStartConsumed, playerColor, tcMs, clearHint]);
 
   const captured = useMemo(() => {
     const remaining: Record<Color, Record<PieceType, number>> = {
@@ -911,6 +1101,7 @@ export function ChessGame({
                 board={state.board}
                 lang={lang}
                 onNewGame={() => newGame(playerColor)}
+                onExportVideo={openVideoExport}
               />
             )}
             </div>
@@ -936,6 +1127,11 @@ export function ChessGame({
         </div>
       )}
       {restoreToast && <div className="ch-toast">{restoreToast}</div>}
+      <VideoExportModal
+        lang={lang}
+        game={videoGame}
+        onClose={() => setVideoGame(null)}
+      />
 
         <aside className="ch-panel">
           <div
