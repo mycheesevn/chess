@@ -3,16 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Board, type FightAnim } from "./Board";
 import { VectorPiece } from "./Pieces";
+import { VideoExportModal, type VideoGame } from "./VideoExportModal";
+import { STR } from "@/lib/chess/i18n";
 import { Pagination, usePagination } from "./Pagination";
 import { burstConfetti } from "@/lib/chess/confetti";
 import { useAuth } from "./AuthProvider";
 import { fetchGameHistory, type ChessGameRow } from "@/lib/supabase/engagement";
 import {
+  fetchMyRoomMatches,
+  type MyRoomMatch,
+} from "@/lib/supabase/rooms";
+import { reasonLabel } from "./RoomMatchView";
+import {
   applyMove,
   gameStatus,
-  initialBoard,
-  INITIAL_CASTLING,
 } from "@/lib/chess/engine";
+import { startPositionFromFen } from "@/lib/chess/fen";
 import { uciToMove } from "@/lib/chess/uci";
 import type { Board as BoardT, CastlingRights, Lang, Move } from "@/lib/chess/types";
 import { opposite } from "@/lib/chess/types";
@@ -23,34 +29,93 @@ interface BoardState {
   turn: "white" | "black";
   castling: CastlingRights;
   ep: { x: number; y: number } | null;
+  halfmove: number;
 }
 
-function boardStateAfter(movesStr: string, plyCount: number): BoardState {
-  let board = initialBoard();
-  let castling = { ...INITIAL_CASTLING };
-  let ep: { x: number; y: number } | null = null;
-  let turn: "white" | "black" = "white";
+function boardStateAfter(
+  movesStr: string,
+  plyCount: number,
+  startFen?: string | null
+): BoardState {
+  const start = startPositionFromFen(startFen);
+  let board = start.board;
+  let castling = { ...start.castling };
+  let ep: { x: number; y: number } | null = start.ep;
+  let turn: "white" | "black" = start.turn;
+  let halfmove = start.halfmove;
   const ucis = movesStr.trim().split(/\s+/).filter(Boolean).slice(0, plyCount);
   for (const uci of ucis) {
-    const r = applyMove(board, uciToMove(uci), castling, ep);
+    const move = uciToMove(uci);
+    const piece = board[move.fromY][move.fromX];
+    const isCapture =
+      !!board[move.toY][move.toX] ||
+      (!!piece &&
+        piece.type === "P" &&
+        !!ep &&
+        move.toX === ep.x &&
+        move.toY === ep.y);
+    const r = applyMove(board, move, castling, ep);
     board = r.board;
     castling = r.castling;
     ep = r.ep;
+    halfmove = piece?.type === "P" || isCapture ? 0 : halfmove + 1;
     turn = opposite(turn);
   }
-  return { board, turn, castling, ep };
+  return { board, turn, castling, ep, halfmove };
 }
 
-function boardAfter(movesStr: string, plyCount: number): BoardT {
-  return boardStateAfter(movesStr, plyCount).board;
+function boardAfter(
+  movesStr: string,
+  plyCount: number,
+  startFen?: string | null
+): BoardT {
+  return boardStateAfter(movesStr, plyCount, startFen).board;
 }
 
 export function HistoryView({ lang }: { lang: Lang }) {
   const { user } = useAuth();
   const [games, setGames] = useState<ChessGameRow[]>([]);
+  const [roomMatches, setRoomMatches] = useState<MyRoomMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [replay, setReplay] = useState<ChessGameRow | null>(null);
   const [ply, setPly] = useState(0);
+  const [videoGame, setVideoGame] = useState<VideoGame | null>(null);
+
+  const openVideoExport = (g: ChessGameRow) => {
+    const ucis = g.moves.trim().split(/\s+/).filter(Boolean);
+    if (ucis.length === 0) return;
+    const date = new Date(g.created_at).toLocaleDateString(
+      lang === "vi" ? "vi-VN" : "en-US"
+    );
+    const title =
+      g.result === "win"
+        ? lang === "vi"
+          ? `Thắng máy cấp ${g.ai_level}! 🏆`
+          : `Beat the computer (Level ${g.ai_level})! 🏆`
+        : g.result === "draw"
+          ? lang === "vi"
+            ? "Hòa! 🤝"
+            : "It's a draw! 🤝"
+          : lang === "vi"
+            ? "Thua một ván hay! 💪"
+            : "Lost a good game! 💪";
+    const start = startPositionFromFen(g.start_fen);
+    setVideoGame({
+      ucis,
+      startBoard: start.board,
+      startCastling: start.castling,
+      startEp: start.ep,
+      startTurn: start.turn,
+      startHalfmove: start.halfmove,
+      playerColor: g.player_color === "black" ? "black" : "white",
+      title,
+      subtitle:
+        lang === "vi"
+          ? `${ucis.length} nước · ${date}`
+          : `${ucis.length} moves · ${date}`,
+      shareUrl: window.location.origin,
+    });
+  };
 
   useEffect(() => {
     if (!user) {
@@ -61,9 +126,11 @@ export function HistoryView({ lang }: { lang: Lang }) {
       .then(setGames)
       .catch(() => {})
       .finally(() => setLoading(false));
+    fetchMyRoomMatches(50).then(setRoomMatches).catch(() => {});
   }, [user]);
 
   const { page, pageCount, pageItems, setPage } = usePagination(games, 10);
+  const roomPaging = usePagination(roomMatches, 10);
 
   // --- replay celebration state ---
   const [fightAnim, setFightAnim] = useState<FightAnim | null>(null);
@@ -83,7 +150,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
 
   // Final position + status (for the checkmate celebration).
   const finalState = useMemo(
-    () => (replay ? boardStateAfter(replay.moves, totalPlies) : null),
+    () => (replay ? boardStateAfter(replay.moves, totalPlies, replay.start_fen) : null),
     [replay, totalPlies]
   );
   const finalStatus = useMemo(
@@ -94,7 +161,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
             finalState.turn,
             finalState.castling,
             finalState.ep,
-            0
+            finalState.halfmove
           )
         : null,
     [finalState]
@@ -131,7 +198,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
     const uci = replayUcis[ply - 1];
     if (!uci) return;
     const move = uciToMove(uci);
-    const prev = boardStateAfter(replay.moves, ply - 1);
+    const prev = boardStateAfter(replay.moves, ply - 1, replay.start_fen);
     const piece = prev.board[move.fromY][move.fromX];
     if (!piece) return;
     setFightAnim({ id: ply, move, piece, captured: null });
@@ -183,7 +250,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
           <div className="ch-board-area">
             <div key={shakeKey} className={`ch-board-fit${shakeKey > 0 ? " shake" : ""}`}>
             <Board
-              board={boardAfter(replay.moves, ply)}
+              board={boardAfter(replay.moves, ply, replay.start_fen)}
               flipped={replay.player_color === "black"}
               selected={null}
               targets={[]}
@@ -258,8 +325,20 @@ export function HistoryView({ lang }: { lang: Lang }) {
                 lang === "vi" ? "vi-VN" : "en-US"
               )}
             </p>
+            <button
+              type="button"
+              className="ch-btn ch-btn-sm"
+              onClick={() => openVideoExport(replay)}
+            >
+              🎬 {STR[lang].videoExport}
+            </button>
           </aside>
         </div>
+        <VideoExportModal
+          lang={lang}
+          game={videoGame}
+          onClose={() => setVideoGame(null)}
+        />
       </div>
     );
   }
@@ -273,12 +352,14 @@ export function HistoryView({ lang }: { lang: Lang }) {
       <h2>📜 {lang === "vi" ? "Lịch sử ván đấu" : "Game history"}</h2>
       {loading ? (
         <p>…</p>
-      ) : games.length === 0 ? (
+      ) : games.length === 0 && roomMatches.length === 0 ? (
         <p className="ch-hint">
           {lang === "vi" ? "Chưa có ván nào." : "No games yet."}
         </p>
       ) : (
         <>
+          {games.length > 0 && (
+            <>
           <p className="ch-hint">
             ✅ {stats.wins} · ❌ {stats.losses} · ➖ {stats.draws}
           </p>
@@ -307,13 +388,71 @@ export function HistoryView({ lang }: { lang: Lang }) {
                     {lang === "vi" ? "Xem lại" : "Replay"}
                   </button>
                 )}
+                {g.moves && (
+                  <button
+                    type="button"
+                    className="ch-btn ch-btn-sm"
+                    title={STR[lang].videoExport}
+                    onClick={() => openVideoExport(g)}
+                  >
+                    🎬
+                  </button>
+                )}
               </li>
             ))}
           </ul>
           <Pagination page={page} pageCount={pageCount} onPage={setPage} />
+            </>
+          )}
+          {roomMatches.length > 0 && (
+            <>
+              <h3>👥 {lang === "vi" ? "Ván đấu trong phòng" : "Room matches"}</h3>
+              <ul className="ch-board-list">
+                {roomPaging.pageItems.map((rm) => {
+                  const plies = rm.match.moves
+                    ? rm.match.moves.trim().split(/\s+/).filter(Boolean).length
+                    : 0;
+                  const icon =
+                    rm.match.result === "draw"
+                      ? "➖"
+                      : rm.match.result === rm.myColor
+                        ? "✅"
+                        : "❌";
+                  return (
+                    <li key={rm.match.id} className="ch-lb-row">
+                      <span>{icon}</span>
+                      <span className="ch-lb-name">
+                        {lang === "vi" ? "gặp" : "vs"} {rm.opponentName} · {rm.roomName}
+                      </span>
+                      <span className="ch-lb-title">
+                        {plies} {lang === "vi" ? "nước" : "plies"}
+                        {rm.match.reason
+                          ? ` · ${reasonLabel(rm.match.reason, lang)}`
+                          : ""}
+                        {" · "}
+                        {new Date(
+                          rm.match.finished_at ?? rm.match.created_at ?? ""
+                        ).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US")}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Pagination
+                page={roomPaging.page}
+                pageCount={roomPaging.pageCount}
+                onPage={roomPaging.setPage}
+              />
+            </>
+          )}
         </>
       )}
     </div>
+    <VideoExportModal
+      lang={lang}
+      game={videoGame}
+      onClose={() => setVideoGame(null)}
+    />
     </div>
   );
 }
