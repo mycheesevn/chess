@@ -6,7 +6,7 @@ import type { Board as BoardT, Color, Lang } from "@/lib/chess/types";
 
 interface Props {
   gameOver: {
-    kind: "checkmate" | "stalemate" | "fifty-move" | "insufficient-material";
+    kind: "checkmate" | "stalemate" | "fifty-move" | "insufficient-material" | "flag";
     winner: Color | null;
   };
   playerColor: Color;
@@ -27,21 +27,31 @@ export function GameOverPanel({
   onNewGame,
 }: Props) {
   const [sharing, setSharing] = useState(false);
-  const won = gameOver.kind === "checkmate" && gameOver.winner === playerColor;
-  const draw = gameOver.kind !== "checkmate";
+  const won =
+    (gameOver.kind === "checkmate" || gameOver.kind === "flag") &&
+    gameOver.winner === playerColor;
+  const draw = gameOver.kind !== "checkmate" && gameOver.kind !== "flag";
 
   const headline =
-    lang === "vi"
+    gameOver.kind === "flag"
       ? won
-        ? "Chiếu hết! Bạn thắng! ♔"
-        : draw
-          ? "Hòa!"
-          : "Bạn thua — phục thù nào!"
-      : won
-        ? "Checkmate! You won! ♔"
-        : draw
-          ? "Draw!"
-          : "You lost — rematch?";
+        ? lang === "vi"
+          ? "⏱ Đối thủ hết giờ — bạn thắng!"
+          : "⏱ Opponent flagged — you win!"
+        : lang === "vi"
+          ? "⏱ Bạn hết giờ — bạn thua!"
+          : "⏱ You flagged — you lose!"
+      : lang === "vi"
+        ? won
+          ? "Chiếu hết! Bạn thắng! ♔"
+          : draw
+            ? "Hòa!"
+            : "Bạn thua — phục thù nào!"
+        : won
+          ? "Checkmate! You won! ♔"
+          : draw
+            ? "Draw!"
+            : "You lost — rematch?";
 
   const doShare = async () => {
     setSharing(true);

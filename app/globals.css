@@ -252,6 +252,115 @@ body {
   animation: board-shake 0.4s ease;
 }
 
+/* ---------- live eval bar (beside the board, PacClone pattern) ---------- */
+.ch-board-with-eval {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
+  /* Takes the column space left after the clock rows (if any). */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+}
+.ch-evalbar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-shrink: 0;
+  padding: 2px 0;
+}
+.ch-evalbar {
+  position: relative;
+  flex: 1;
+  width: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #141414; /* top side = black */
+  border: 1px solid #3a3a3a;
+}
+.ch-evalbar.flipped {
+  background: #e8e0d0; /* top side = white */
+}
+.ch-evalbar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--fill);
+  background: linear-gradient(to top, #cfc6b4, #ffffff); /* bottom = white */
+  transition: height 0.5s ease;
+}
+.ch-evalbar.flipped .ch-evalbar-fill {
+  background: linear-gradient(to top, #000, #3d3d3d); /* bottom = black */
+}
+.ch-evalbar-label {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #9a9a9a;
+  margin-top: 5px;
+}
+
+/* ---------- hint rings ---------- */
+.ch-hint-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ch-hint-pulse 1s ease-in-out infinite;
+}
+@keyframes ch-hint-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.ch-hint-toast {
+  position: fixed;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 212, 59, 0.96);
+  color: #221a08;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 12px;
+  z-index: 60;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  animation: ch-pop 0.3s ease;
+}
+
+/* ---------- blitz clocks ---------- */
+.ch-board-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-height: 0;
+  max-width: 100%;
+}
+.ch-clock-row {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+.ch-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 1rem;
+  padding: 4px 16px;
+  border-radius: 10px;
+  background: var(--panel-2, #262019);
+  border: 1px solid var(--border, #3a2f22);
+  color: var(--ink, #f3e9d7);
+}
+.ch-clock.active {
+  border-color: #ffd43b;
+  color: #ffd43b;
+}
+.ch-clock.low {
+  color: #ff8787;
+  border-color: #ff8787;
+}
+
 @keyframes board-shake {
   0%, 100% { transform: translate(0, 0) rotate(0); }
   20% { transform: translate(-8px, 5px) rotate(-0.5deg); }
@@ -487,6 +596,19 @@ body {
 
   .ch-layout {
     flex-direction: column;
+    /* Nothing inside board + panel may push the page wider than the
+       screen (which makes the whole view look shifted/zoomed). */
+    overflow-x: hidden;
+  }
+
+  /* iOS Safari auto-zooms the page when a focused input/textarea/select
+     has font-size < 16px, and the zoom sticks afterwards — in a room this
+     made the board look enlarged and shifted as soon as a player tapped
+     the comment box. Force 16px on phones to prevent the zoom. */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 
   .ch-board-fit {
@@ -494,6 +616,39 @@ body {
     height: auto;
     max-width: 560px;
     margin: 0 auto;
+  }
+
+  /* Eval bar goes horizontal above the board on phones. */
+  .ch-board-with-eval {
+    flex-direction: column;
+    height: auto;
+    align-items: stretch;
+  }
+  .ch-evalbar-wrap {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto 4px;
+    padding: 0 2px;
+  }
+  .ch-evalbar {
+    flex: 1;
+    width: auto;
+    height: 10px;
+  }
+  .ch-evalbar-fill {
+    top: 0;
+    bottom: auto;
+    height: 100%;
+    width: var(--fill);
+    transition: width 0.5s ease;
+  }
+  .ch-evalbar-label {
+    margin-top: 0;
+    min-width: 44px;
+    text-align: right;
   }
 
   .ch-panel {
@@ -602,6 +757,12 @@ body {
 .ch-room-match { margin-top: 12px; }
 .ch-room-status {
   text-align: center; font-weight: 700; font-size: 16px; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+}
+.ch-viewers { font-size: 0.9rem; font-weight: 600; opacity: 0.8; }
+.ch-rematch-row {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 8px 0 4px;
 }
 .ch-auth-btns { display: flex; gap: 6px; }
 
@@ -625,6 +786,22 @@ body {
   padding: 12px 24px; border-radius: 12px; z-index: 100;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
+
+/* ---------- modal (challenge popup) ---------- */
+.ch-modal-root {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.ch-modal {
+  background: var(--panel, #1e1812); color: var(--ink, #f3e9d7);
+  border: 1px solid var(--border, #3a2f22);
+  border-radius: 16px; padding: 22px 26px; max-width: 420px; width: 100%;
+  text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+}
+.ch-modal h3 { margin: 0 0 16px; font-size: 1.15rem; }
+.ch-modal-actions { display: flex; gap: 10px; justify-content: center; }
 
 /* ---------- match social ---------- */
 .ch-social { margin-top: 12px; position: relative; }
@@ -689,3 +866,364 @@ body {
   100% { transform: scale(1); opacity: 1; }
 }
 .ch-puzzle-win { font-size: 18px; font-weight: 800; margin: 0 0 8px; }
+
+/* ---------- puzzle rush ---------- */
+.ch-rush-enter {
+  display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; flex-wrap: wrap;
+}
+.ch-btn-rush {
+  background: linear-gradient(135deg, #7c2d12, #c2255c);
+  border-color: #ff8787; color: #fff; font-weight: 800;
+}
+.ch-rush-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 17px; font-weight: 700; margin-bottom: 6px;
+}
+.ch-rush-time { font-variant-numeric: tabular-nums; }
+.ch-rush-lives { letter-spacing: 2px; }
+.ch-rush-score { font-size: 1.15rem; }
+.ch-rush-newbest { color: #ffd43b; }
+.ch-rush-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ---------- app shell: topbar, identity menu, drawer (PacClone pattern) ---------- */
+.ch-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.ch-menu-btn {
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ch-topbar .ch-brand {
+  min-width: 0;
+}
+
+.ch-topbar .ch-title {
+  font-size: 1.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ch-account {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ch-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.ch-chip {
+  background: rgba(255, 212, 59, 0.14);
+  border: 1px solid rgba(255, 212, 59, 0.45);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Facebook-style account button + dropdown menu */
+.ch-account-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  padding: 4px 8px 4px 4px;
+  border-radius: 999px;
+  font: inherit;
+}
+
+.ch-account-btn:hover {
+  background: var(--panel-2);
+}
+
+.ch-account-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ch-account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ch-account-avatar.large {
+  width: 48px;
+  height: 48px;
+  font-size: 1.6rem;
+}
+
+.ch-account-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ch-caret {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+/* Unread-notification red dot on the identity button */
+.ch-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fa5252;
+  border: 2px solid var(--panel);
+  z-index: 1;
+}
+
+.ch-badge {
+  margin-left: 6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #fa5252;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+.ch-muted {
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ch-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.ch-account-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 95;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 230px;
+  max-width: 320px;
+  padding: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  display: grid;
+  gap: 2px;
+}
+
+.ch-account-menu-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.ch-account-menu-id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ch-account-menu-id strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ch-account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ch-account-menu-item:hover {
+  background: var(--panel-2);
+}
+
+/* Collapsible settings block inside the account/gear menu */
+.ch-account-menu-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  margin: 2px 0 6px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.ch-account-menu-settings .ch-input {
+  width: 100%;
+}
+
+/* ---------- slide-in menu drawer ---------- */
+.ch-drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.ch-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.ch-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(320px, 85vw);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  animation: ch-drawer-in 0.22s ease;
+  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes ch-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.ch-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 1.05rem;
+}
+
+.ch-drawer-body {
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ch-drawer-body section h2 {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.ch-drawer-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ch-drawer-modes button {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ch-drawer-modes button[data-active="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #221a08;
+}
+
+@media (max-width: 920px) {
+  .ch-topbar {
+    padding: 6px 10px;
+  }
+  .ch-account-name {
+    display: none;
+  }
+  .ch-chip {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+  }
+  .ch-account-menu {
+    min-width: 210px;
+  }
+}
+
+.ch-empty-note {
+  color: var(--muted);
+  text-align: center;
+  max-width: 420px;
+  line-height: 1.6;
+}

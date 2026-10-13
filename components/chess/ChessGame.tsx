@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Board, type FightAnim } from "./Board";
 import { GameOverPanel } from "./GameOverPanel";
+import { EvalBar } from "./EvalBar";
 import {
+  analyzePosition,
   findBestMove,
   getLevelConfig,
   LEVELS,
@@ -19,7 +21,7 @@ import {
 } from "@/lib/chess/engine";
 import { STR } from "@/lib/chess/i18n";
 import { toSAN } from "@/lib/chess/notation";
-import { moveToUci } from "@/lib/chess/uci";
+import { moveToUci, uciToMove } from "@/lib/chess/uci";
 import {
   Board as BoardT,
   CastlingRights,
@@ -41,7 +43,52 @@ interface Snapshot {
   halfmove: number;
   lastMove: Move | null;
   logLength: number;
+  clocksMs: { white: number; black: number } | null;
 }
+
+type TcMs = "none" | number;
+
+interface InProgress {
+  v: 1;
+  uciLog: string[];
+  level: number;
+  playerColor: Color;
+  tcMs: TcMs;
+  clocksMs: { white: number; black: number } | null;
+}
+
+const IN_PROGRESS_KEY = "chess-in-progress";
+
+function loadProgress(): InProgress | null {
+  try {
+    const raw = localStorage.getItem(IN_PROGRESS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as InProgress;
+    if (p.v !== 1 || !Array.isArray(p.uciLog)) return null;
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function saveProgress(p: InProgress): void {
+  try {
+    localStorage.setItem(IN_PROGRESS_KEY, JSON.stringify(p));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function clearSaved(): void {
+  try {
+    localStorage.removeItem(IN_PROGRESS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** |score| above this bound means a forced mate was found (matches ai.ts). */
+const MATE_SCORE_BOUND = 99000;
 
 interface GameState {
   board: BoardT;
@@ -57,7 +104,7 @@ interface GameState {
   pendingPromotion: { from: { x: number; y: number }; to: { x: number; y: number } } | null;
   inCheck: boolean;
   gameOver: {
-    kind: "checkmate" | "stalemate" | "fifty-move" | "insufficient-material";
+    kind: "checkmate" | "stalemate" | "fifty-move" | "insufficient-material" | "flag";
     winner: Color | null;
   } | null;
 }
@@ -83,6 +130,84 @@ function freshState(): GameState {
     pendingPromotion: null,
     inCheck: false,
     gameOver: null,
+  };
+}
+
+/** Rebuild a full game state by replaying a saved UCI move list. */
+function restoreGame(saved: InProgress, lang: Lang): GameState {
+  const st = freshState();
+  let board = st.board;
+  let castling = { ...INITIAL_CASTLING };
+  let ep: { x: number; y: number } | null = null;
+  let halfmove = 0;
+  let turn: Color = "white";
+  let lastMove: Move | null = null;
+  const log: string[] = [];
+  const uciLog: string[] = [];
+  const history: Snapshot[] = [];
+  for (const uci of saved.uciLog) {
+    const move = uciToMove(uci);
+    const piece = board[move.fromY][move.fromX];
+    if (!piece) break;
+    let captured = board[move.toY][move.toX];
+    if (
+      !captured &&
+      piece.type === "P" &&
+      ep &&
+      move.toX === ep.x &&
+      move.toY === ep.y
+    ) {
+      captured = board[move.fromY][move.toX];
+    }
+    history.push({
+      board,
+      turn,
+      castling,
+      ep,
+      halfmove,
+      lastMove,
+      logLength: log.length,
+      clocksMs: saved.clocksMs,
+    });
+    const r = applyMove(board, move, castling, ep);
+    const nextTurn = opposite(turn);
+    halfmove = piece.type === "P" || captured ? 0 : halfmove + 1;
+    const status = gameStatus(r.board, nextTurn, r.castling, r.ep, halfmove);
+    const nextCheck = !status.over && inCheck(r.board, nextTurn);
+    const suffix =
+      status.over && status.kind === "checkmate"
+        ? "#"
+        : nextCheck
+          ? "+"
+          : "";
+    log.push(toSAN(board, move, turn, castling, ep, lang, suffix));
+    uciLog.push(uci);
+    board = r.board;
+    castling = r.castling;
+    ep = r.ep;
+    turn = nextTurn;
+    lastMove = move;
+  }
+  const finalStatus = gameStatus(board, turn, castling, ep, halfmove);
+  return {
+    board,
+    turn,
+    castling,
+    ep,
+    halfmove,
+    lastMove,
+    log,
+    uciLog,
+    history,
+    selected: null,
+    pendingPromotion: null,
+    inCheck: !finalStatus.over && inCheck(board, turn),
+    gameOver: finalStatus.over
+      ? {
+          kind: finalStatus.kind,
+          winner: finalStatus.kind === "checkmate" ? finalStatus.winner : null,
+        }
+      : null,
   };
 }
 
@@ -121,7 +246,26 @@ export function ChessGame({
   const [aiStats, setAiStats] = useState<SearchStats | null>(null);
   const [fight, setFight] = useState<FightAnim | null>(null);
   const [shakeId, setShakeId] = useState(0);
-  const reportedEnd = useRef(0);
+  const reportedEnd = useRef<string | number>(0);
+  // Hint.
+  const [hintMove, setHintMove] = useState<Move | null>(null);
+  const [hintThinking, setHintThinking] = useState(false);
+  const [hintToast, setHintToast] = useState<string | null>(null);
+  const hintTimer = useRef<number | null>(null);
+  // Live eval bar.
+  const [evalInfo, setEvalInfo] = useState({
+    winProbWhite: 0.5,
+    cpWhite: 0,
+    mate: false,
+  });
+  const evalGen = useRef(0);
+  // Blitz clocks.
+  const [tcMs, setTcMs] = useState<TcMs>("none");
+  const [clocksMs, setClocksMs] = useState<{ white: number; black: number } | null>(null);
+  const clocksMsRef = useRef(clocksMs);
+  clocksMsRef.current = clocksMs;
+  // Resume.
+  const [restoreToast, setRestoreToast] = useState<string | null>(null);
 
   const s = STR[lang];
   const num = (v: string) => (lang === "vi" ? v.replace(".", ",") : v);
@@ -130,6 +274,32 @@ export function ChessGame({
   const fightTimer = useRef<number | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const clearHint = useCallback(() => {
+    if (hintTimer.current) window.clearTimeout(hintTimer.current);
+    setHintMove(null);
+    setHintToast(null);
+    setHintThinking(false);
+  }, []);
+
+  // Resume an in-progress game (auto-saved on every move).
+  useEffect(() => {
+    const saved = loadProgress();
+    if (!saved || saved.uciLog.length === 0) return;
+    try {
+      const restored = restoreGame(saved, lang);
+      setLevel(Math.min(12, Math.max(1, Math.round(saved.level) || 5)));
+      setPlayerColor(saved.playerColor === "black" ? "black" : "white");
+      setTcMs(saved.tcMs);
+      setClocksMs(saved.clocksMs);
+      setState(restored);
+      setRestoreToast(s.restoreToast);
+      window.setTimeout(() => setRestoreToast(null), 4000);
+    } catch {
+      clearSaved();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     try {
@@ -149,12 +319,12 @@ export function ChessGame({
   // Report game end once for XP recording.
   useEffect(() => {
     if (!state.gameOver || !onGameEnd) return;
-    const id = state.log.length;
+    const id = `${state.log.length}`;
     if (reportedEnd.current === id) return;
     reportedEnd.current = id;
     const go = state.gameOver;
     const result: "win" | "loss" | "draw" =
-      go.kind === "checkmate"
+      go.kind === "checkmate" || go.kind === "flag"
         ? go.winner === playerColor
           ? "win"
           : "loss"
@@ -196,6 +366,8 @@ export function ChessGame({
         prev.board, move, prev.turn, prev.castling, prev.ep, lang, suffix
       );
 
+      const isOver = status.over;
+      const nextUciLog = [...prev.uciLog, moveToUci(move)];
       setState({
         board: r.board,
         turn: nextTurn,
@@ -204,7 +376,7 @@ export function ChessGame({
         halfmove,
         lastMove: move,
         log: [...prev.log, san],
-        uciLog: [...prev.uciLog, moveToUci(move)],
+        uciLog: nextUciLog,
         history: [
           ...prev.history,
           {
@@ -215,6 +387,7 @@ export function ChessGame({
             halfmove: prev.halfmove,
             lastMove: prev.lastMove,
             logLength: prev.log.length,
+            clocksMs: clocksMsRef.current,
           },
         ],
         selected: null,
@@ -227,6 +400,19 @@ export function ChessGame({
             }
           : null,
       });
+
+      // Auto-save / resume + hint cleanup.
+      clearHint();
+      if (isOver) clearSaved();
+      else
+        saveProgress({
+          v: 1,
+          uciLog: nextUciLog,
+          level,
+          playerColor,
+          tcMs,
+          clocksMs: clocksMsRef.current,
+        });
 
       // Choreograph the fight animation.
       const shown: Piece = move.promotion
@@ -241,7 +427,7 @@ export function ChessGame({
         captured ? 1050 : 620
       );
     },
-    [lang]
+    [lang, level, playerColor, tcMs, clearHint]
   );
 
   // Computer move (waits for any fight animation to finish first).
@@ -264,6 +450,93 @@ export function ChessGame({
     }, 250);
     return () => window.clearTimeout(t);
   }, [state.board, state.turn, state.gameOver, state.castling, state.ep, aiColor, level, fight, commitMove]);
+
+  // Blitz clocks: tick the side to move (AI thinking time is charged to
+  // the AI's clock, like PacClone). Starts on the first move.
+  const clocksActive = !!clocksMs && !state.gameOver && state.log.length > 0;
+  useEffect(() => {
+    if (!clocksActive) return;
+    const t = window.setInterval(() => {
+      const side = stateRef.current.turn;
+      setClocksMs((prev) => {
+        if (!prev) return prev;
+        return { ...prev, [side]: Math.max(0, prev[side] - 100) };
+      });
+    }, 100);
+    return () => window.clearInterval(t);
+  }, [clocksActive]);
+
+  // Flag fall = loss for the flagged side.
+  useEffect(() => {
+    if (!clocksMs || state.gameOver) return;
+    const loser: Color | null =
+      clocksMs.white <= 0 ? "white" : clocksMs.black <= 0 ? "black" : null;
+    if (loser) {
+      clearSaved();
+      setState((prev) => ({
+        ...prev,
+        gameOver: { kind: "flag", winner: opposite(loser) },
+        inCheck: false,
+      }));
+    }
+  }, [clocksMs, state.gameOver]);
+
+  // Live eval bar: shallow deterministic search after each move.
+  useEffect(() => {
+    const gen = ++evalGen.current;
+    const t = window.setTimeout(() => {
+      if (evalGen.current !== gen) return;
+      const { board, turn, castling, ep } = stateRef.current;
+      const a = analyzePosition(board, turn, castling, ep, 400);
+      if (evalGen.current !== gen) return;
+      const cpWhite = turn === "white" ? a.score : -a.score;
+      setEvalInfo({
+        winProbWhite: 1 / (1 + Math.pow(10, -cpWhite / 400)),
+        cpWhite: Math.max(-99999, Math.min(99999, cpWhite)),
+        mate: Math.abs(a.score) > MATE_SCORE_BOUND,
+      });
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [state.board, state.turn, state.gameOver]);
+
+  // Hint: engine best move, gold rings on from/to + a toast naming the move.
+  const doHint = useCallback(() => {
+    if (thinking || fight || state.gameOver || hintThinking) return;
+    const snap = stateRef.current;
+    if (snap.turn !== playerColor) return;
+    setHintThinking(true);
+    window.setTimeout(() => {
+      try {
+        const { bestMove } = analyzePosition(
+          snap.board,
+          snap.turn,
+          snap.castling,
+          snap.ep,
+          1500
+        );
+        if (bestMove && stateRef.current.turn === playerColor) {
+          setHintMove(bestMove);
+          const san = toSAN(
+            snap.board,
+            bestMove,
+            snap.turn,
+            snap.castling,
+            snap.ep,
+            lang,
+            ""
+          );
+          setHintToast(s.hintToast(san));
+          if (hintTimer.current) window.clearTimeout(hintTimer.current);
+          hintTimer.current = window.setTimeout(() => {
+            setHintMove(null);
+            setHintToast(null);
+          }, 4500);
+        }
+      } finally {
+        setHintThinking(false);
+      }
+    }, 50);
+  }, [thinking, fight, state.gameOver, hintThinking, playerColor, lang, s]);
 
   const targets = useMemo(
     () =>
@@ -327,41 +600,57 @@ export function ChessGame({
 
   const undo = useCallback(() => {
     if (thinking || fight) return;
+    const prev = stateRef.current;
+    if (prev.history.length === 0) return;
     if (fightTimer.current) window.clearTimeout(fightTimer.current);
     setFight(null);
-    setState((prev) => {
-      const h = [...prev.history];
-      if (h.length === 0) return prev;
-      let snap = h.pop()!;
-      if (snap.turn !== playerColor && h.length > 0) snap = h.pop()!;
-      const status = gameStatus(snap.board, snap.turn, snap.castling, snap.ep, snap.halfmove);
-      return {
-        ...prev,
-        board: snap.board,
-        turn: snap.turn,
-        castling: snap.castling,
-        ep: snap.ep,
-        halfmove: snap.halfmove,
-        lastMove: snap.lastMove,
-        log: prev.log.slice(0, snap.logLength),
-        uciLog: prev.uciLog.slice(0, snap.logLength),
-        history: h,
-        selected: null,
-        pendingPromotion: null,
-        inCheck: !status.over && inCheck(snap.board, snap.turn),
-        gameOver: null,
-      };
+    clearHint();
+    const h = [...prev.history];
+    let snap = h.pop()!;
+    if (snap.turn !== playerColor && h.length > 0) snap = h.pop()!;
+    const status = gameStatus(snap.board, snap.turn, snap.castling, snap.ep, snap.halfmove);
+    setClocksMs(snap.clocksMs);
+    saveProgress({
+      v: 1,
+      uciLog: prev.uciLog.slice(0, snap.logLength),
+      level,
+      playerColor,
+      tcMs,
+      clocksMs: snap.clocksMs,
     });
-  }, [thinking, fight, playerColor]);
+    setState({
+      ...prev,
+      board: snap.board,
+      turn: snap.turn,
+      castling: snap.castling,
+      ep: snap.ep,
+      halfmove: snap.halfmove,
+      lastMove: snap.lastMove,
+      log: prev.log.slice(0, snap.logLength),
+      uciLog: prev.uciLog.slice(0, snap.logLength),
+      history: h,
+      selected: null,
+      pendingPromotion: null,
+      inCheck: !status.over && inCheck(snap.board, snap.turn),
+      gameOver: null,
+    });
+  }, [thinking, fight, playerColor, level, tcMs, clearHint]);
 
-  const newGame = useCallback((color: Color) => {
-    if (fightTimer.current) window.clearTimeout(fightTimer.current);
-    setPlayerColor(color);
-    setThinking(false);
-    setAiStats(null);
-    setFight(null);
-    setState(freshState());
-  }, []);
+  const newGame = useCallback(
+    (color: Color, tc?: TcMs) => {
+      if (fightTimer.current) window.clearTimeout(fightTimer.current);
+      const t = tc ?? tcMs;
+      setPlayerColor(color);
+      setThinking(false);
+      setAiStats(null);
+      setFight(null);
+      setClocksMs(t === "none" ? null : { white: t, black: t });
+      clearHint();
+      clearSaved();
+      setState(freshState());
+    },
+    [tcMs, clearHint]
+  );
 
   const captured = useMemo(() => {
     const remaining: Record<Color, Record<PieceType, number>> = {
@@ -389,15 +678,28 @@ export function ChessGame({
   const statusText = state.gameOver
     ? state.gameOver.kind === "checkmate"
       ? s.checkmate(state.gameOver.winner === "white" ? s.whiteName : s.blackName)
-      : state.gameOver.kind === "stalemate"
-        ? s.stalemateDraw()
-        : state.gameOver.kind === "fifty-move"
-          ? s.fiftyMoveDraw()
-          : s.materialDraw()
+      : state.gameOver.kind === "flag"
+        ? s.flagged(state.gameOver.winner === "white" ? s.whiteName : s.blackName)
+        : state.gameOver.kind === "stalemate"
+          ? s.stalemateDraw()
+          : state.gameOver.kind === "fifty-move"
+            ? s.fiftyMoveDraw()
+            : s.materialDraw()
     : s.toMove(
         state.turn === "white" ? s.whiteName : s.blackName,
         state.inCheck
       );
+
+  const fmtClock = (ms: number): string => {
+    const totalSec = Math.ceil(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    if (ms < 20000) {
+      const tenths = Math.floor((ms % 1000) / 100);
+      return `${m}:${sec.toString().padStart(2, "0")}.${tenths}`;
+    }
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
 
   const logPairs = useMemo(() => {
     const pairs: Array<[string, string?]> = [];
@@ -433,6 +735,26 @@ export function ChessGame({
             </button>
           </div>
           <label className="ch-field">
+            <span>{s.timeControl}</span>
+            <select
+              value={tcMs === "none" ? "none" : String(tcMs)}
+              onChange={(e) => {
+                const v: TcMs =
+                  e.target.value === "none" ? "none" : Number(e.target.value);
+                setTcMs(v);
+                newGame(playerColor, v);
+              }}
+              className="ch-select"
+              title={lang === "vi" ? "Đổi giờ sẽ bắt đầu ván mới" : "Changing time starts a new game"}
+            >
+              <option value="none">{s.noTimeControl}</option>
+              <option value={60000}>{s.minutes(1)}</option>
+              <option value={180000}>{s.minutes(3)}</option>
+              <option value={300000}>{s.minutes(5)}</option>
+              <option value={600000}>{s.minutes(10)}</option>
+            </select>
+          </label>
+          <label className="ch-field">
             <span>{s.level}</span>
             <select
               value={level}
@@ -458,6 +780,18 @@ export function ChessGame({
             </select>
           </label>
           <div className="ch-buttons">
+            <button
+              type="button"
+              className="ch-btn"
+              onClick={doHint}
+              disabled={
+                thinking || !!fight || !!state.gameOver ||
+                state.turn !== playerColor || hintThinking
+              }
+              title={s.hint}
+            >
+              {hintThinking ? s.hintBusy : s.hint}
+            </button>
             <button
               type="button"
               className="ch-btn"
@@ -506,10 +840,27 @@ export function ChessGame({
 
       <main className="ch-layout">
         <div className={`ch-board-area ${thinking ? "is-thinking" : ""}`}>
-          <div
-            key={shakeId}
-            className={`ch-board-fit ${shakeId > 0 ? "shake" : ""}`}
-          >
+          <div className="ch-board-col">
+            {clocksMs && (
+              <div className="ch-clock-row">
+                <span
+                  className={`ch-clock${state.turn === aiColor && !state.gameOver ? " active" : ""}${clocksMs[aiColor] < 20000 ? " low" : ""}`}
+                >
+                  {aiColor === "white" ? "♔" : "♚"} {fmtClock(clocksMs[aiColor])}
+                </span>
+              </div>
+            )}
+            <div className="ch-board-with-eval">
+              <EvalBar
+                winProbWhite={evalInfo.winProbWhite}
+                cpWhite={evalInfo.cpWhite}
+                mate={evalInfo.mate}
+                flipped={playerColor === "black"}
+              />
+              <div
+                key={shakeId}
+                className={`ch-board-fit ${shakeId > 0 ? "shake" : ""}`}
+              >
             <Board
               board={state.board}
               flipped={playerColor === "black"}
@@ -520,6 +871,7 @@ export function ChessGame({
               checkKey={state.log.length}
               checkBadge={s.checkBadge}
               fight={fight}
+              hintMove={hintMove}
               interactive={
                 !thinking && !fight && !state.gameOver &&
                 state.turn === playerColor && !state.pendingPromotion
@@ -570,8 +922,26 @@ export function ChessGame({
                 onNewGame={() => newGame(playerColor)}
               />
             )}
+            </div>
           </div>
+          {clocksMs && (
+            <div className="ch-clock-row">
+              <span
+                className={`ch-clock${state.turn === playerColor && !state.gameOver ? " active" : ""}${clocksMs[playerColor] < 20000 ? " low" : ""}`}
+              >
+                {playerColor === "white" ? "♔" : "♚"} {fmtClock(clocksMs[playerColor])}
+              </span>
+            </div>
+          )}
         </div>
+      </div>
+
+      {hintToast && (
+        <div className="ch-hint-toast" role="status">
+          {hintToast}
+        </div>
+      )}
+      {restoreToast && <div className="ch-toast">{restoreToast}</div>}
 
         <aside className="ch-panel">
           <section>

@@ -17,6 +17,7 @@ import {
   type ChessPuzzle,
 } from "@/lib/chess/puzzles";
 import { renderShareCard, shareCard } from "@/lib/chess/shareCard";
+import { ChessPuzzleRush } from "./ChessPuzzleRush";
 import { alreadySolved, recordPuzzleSolve } from "@/lib/supabase/puzzles";
 import {
   Board as BoardT,
@@ -70,6 +71,7 @@ const PROMO_CHOICES: PieceType[] = ["Q", "R", "B", "N"];
 
 export function PuzzleView({ lang }: { lang: Lang }) {
   const { user, refreshProfile } = useAuth();
+  const [rushMode, setRushMode] = useState(false);
   const [puzzle] = useState<ChessPuzzle>(() => dailyPuzzle());
   const [dateStr] = useState(() => puzzleDateStr());
   const [pos, setPos] = useState(() => replaySetup(puzzle));
@@ -263,11 +265,29 @@ export function PuzzleView({ lang }: { lang: Lang }) {
     }
   }, [lang, streak, pos, turn]);
 
+  if (rushMode) {
+    return <ChessPuzzleRush lang={lang} onExit={() => setRushMode(false)} />;
+  }
+
   return (
     <div className="ch-view">
       <h2>
         🧩 {lang === "vi" ? "Câu đố hằng ngày" : "Daily puzzle"}
       </h2>
+      <div className="ch-rush-enter">
+        <button
+          type="button"
+          className="ch-btn ch-btn-rush"
+          onClick={() => setRushMode(true)}
+        >
+          ⚡ {lang === "vi" ? "Puzzle Rush" : "Puzzle Rush"}
+        </button>
+        <span className="ch-hint">
+          {lang === "vi"
+            ? "3 phút · 3 mạng · giải càng nhiều càng tốt!"
+            : "3 minutes · 3 lives · solve as many as you can!"}
+        </span>
+      </div>
       <p className="ch-puzzle-title">
         {lang === "vi" ? puzzle.titleVi : puzzle.titleEn}
       </p>
