@@ -39,6 +39,14 @@ export interface Strings {
   pieceName: (t: PieceType) => string;
   checkBadge: string;
   checkmateBadge: string;
+  hint: string;
+  hintBusy: string;
+  hintToast: (move: string) => string;
+  timeControl: string;
+  noTimeControl: string;
+  minutes: (n: number) => string;
+  flagged: (colorName: string) => string;
+  restoreToast: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -92,11 +100,20 @@ export const STR: Record<Lang, Strings> = {
     levelDesc: [
       "Absolute beginner", "Beginner", "Casual", "Improving", "Club player",
       "Strong club player", "Expert", "Master", "Grandmaster", "Relentless",
+      "Nightmare", "Unbeatable",
     ],
     promoteTitle: "Promote pawn to:",
     pieceName: (t) => PIECE_NAMES.en[t],
     checkBadge: "CHECK!",
     checkmateBadge: "CHECKMATE!",
+    hint: "💡 Hint",
+    hintBusy: "💡 …",
+    hintToast: (m) => `💡 Hint: ${m}`,
+    timeControl: "Time",
+    noTimeControl: "None",
+    minutes: (n) => `${n} min`,
+    flagged: (c) => `${c} lost on time!`,
+    restoreToast: "↩️ Restored your unfinished game.",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -138,11 +155,20 @@ export const STR: Record<Lang, Strings> = {
       "Mới bắt đầu", "Người mới chơi", "Chơi giải trí", "Đang tiến bộ",
       "Trình độ câu lạc bộ", "Câu lạc bộ khá", "Trình độ chuyên gia",
       "Trình độ kiện tướng", "Trình độ đại kiện tướng", "Cực kỳ khó",
+      "Ác mộng", "Bất khả chiến bại",
     ],
     promoteTitle: "Phong Tốt thành:",
     pieceName: (t) => PIECE_NAMES.vi[t],
     checkBadge: "CHIẾU!",
     checkmateBadge: "CHIẾU HẾT!",
+    hint: "💡 Gợi ý",
+    hintBusy: "💡 …",
+    hintToast: (m) => `💡 Gợi ý: ${m}`,
+    timeControl: "Giờ",
+    noTimeControl: "Không",
+    minutes: (n) => `${n} phút`,
+    flagged: (c) => `${c} thua vì hết giờ!`,
+    restoreToast: "↩️ Đã khôi phục ván đang chơi dở.",
   },
 };
 

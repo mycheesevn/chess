@@ -1,7 +1,7 @@
 // Computer opponent: negamax search with alpha-beta pruning, transposition
 // table (Zobrist hashing), null-move pruning, quiescence search, killer +
 // history move ordering, late move reductions, futility pruning and iterative
-// deepening with aspiration windows. Strength scales across 10 levels via
+// deepening with aspiration windows. Strength scales across 12 levels via
 // search depth, randomness and time caps.
 //
 // Evaluation: material + piece-square tables (middlegame/endgame tapered,
@@ -149,10 +149,15 @@ export const LEVELS: LevelConfig[] = [
   { level: 8, depth: 4, jitter: 0, timeCapMs: 3000 },
   { level: 9, depth: 5, jitter: 0, timeCapMs: 6000 },
   { level: 10, depth: 7, jitter: 0, timeCapMs: 10000 },
+  // Expert levels: L11–L12 search much deeper with larger time budgets.
+  // Levels 1–10 are frozen exactly as shipped (existing players' experience
+  // must not shift).
+  { level: 11, depth: 8, jitter: 0, timeCapMs: 15000 },
+  { level: 12, depth: 10, jitter: 0, timeCapMs: 30000 },
 ];
 
 export function getLevelConfig(level: Level): LevelConfig {
-  const clamped = Math.min(10, Math.max(1, Math.round(level)));
+  const clamped = Math.min(12, Math.max(1, Math.round(level)));
   return LEVELS[clamped - 1];
 }
 
@@ -974,7 +979,7 @@ function searchRoot(
   return done(best, bestScore, completedDepth);
 }
 
-/** Best move for `turn` at the given level (1-10). Null when no legal moves. */
+/** Best move for `turn` at the given level (1-12). Null when no legal moves. */
 export function findBestMove(
   params: SearchParams,
   level: Level
