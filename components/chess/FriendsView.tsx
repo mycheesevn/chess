@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   listFriends,
   listPendingChallenges,
@@ -14,11 +14,33 @@ import { notifyPushTrigger } from "@/lib/push/client";
 import { useAuth } from "./AuthProvider";
 import type { Lang } from "@/lib/chess/types";
 
-export function FriendsView({ lang }: { lang: Lang }) {
+export function FriendsView({
+  lang,
+  highlightChallengeId,
+  onHighlightConsumed,
+}: {
+  lang: Lang;
+  /** Deep-link: highlight this incoming challenge (e.g. from a notification). */
+  highlightChallengeId?: string | null;
+  onHighlightConsumed?: () => void;
+}) {
   const { user } = useAuth();
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [msg, setMsg] = useState("");
+  const highlightRef = useRef<HTMLLIElement | null>(null);
+
+  // Deep-link: scroll to and flash the highlighted challenge once loaded.
+  useEffect(() => {
+    if (
+      highlightChallengeId &&
+      challenges.some((c) => c.id === highlightChallengeId)
+    ) {
+      highlightRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      const t = setTimeout(() => onHighlightConsumed?.(), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [highlightChallengeId, challenges, onHighlightConsumed]);
 
   const load = async () => {
     try {
@@ -97,7 +119,13 @@ export function FriendsView({ lang }: { lang: Lang }) {
           <h3>⚔️ {lang === "vi" ? "Lời thách đấu" : "Challenges"}</h3>
           <ul className="ch-board-list">
             {challenges.map((c) => (
-              <li key={c.id} className="ch-lb-row">
+              <li
+                key={c.id}
+                ref={c.id === highlightChallengeId ? highlightRef : undefined}
+                className={`ch-lb-row${
+                  c.id === highlightChallengeId ? " ch-challenge-highlight" : ""
+                }`}
+              >
                 <span className="ch-lb-name">
                   {c.challenger_name} {lang === "vi" ? "thách đấu bạn!" : "challenges you!"}
                 </span>

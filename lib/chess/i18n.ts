@@ -5,6 +5,7 @@ import type { Lang, PieceType } from "./types";
 export interface Strings {
   title: string;
   subtitle: string;
+  copyright: string;
   level: string;
   youPlay: string;
   whiteFirst: string;
@@ -55,6 +56,7 @@ export const STR: Record<Lang, Strings> = {
   en: {
     title: "♞ Chess",
     subtitle: "Play against the computer",
+    copyright: "Copyright by SynerWork Inc. All rights reserved.",
     level: "Level",
     youPlay: "You play",
     whiteFirst: "White (first)",
@@ -99,6 +101,7 @@ export const STR: Record<Lang, Strings> = {
   vi: {
     title: "♞ Cờ Vua",
     subtitle: "Chơi với máy tính",
+    copyright: "Bản quyền thuộc về SynerWork Inc. Mọi quyền được bảo lưu.",
     level: "Cấp độ",
     youPlay: "Bạn cầm",
     whiteFirst: "Trắng (đi trước)",

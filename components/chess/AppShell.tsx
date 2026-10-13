@@ -20,6 +20,10 @@ type View = "play" | "checkin" | "ranks" | "rooms" | "friends" | "history" | "qu
 
 export function AppShell() {
   const [view, setView] = useState<View>("play");
+  const [deepLinkCorrId, setDeepLinkCorrId] = useState<string | null>(null);
+  const [deepLinkChallengeId, setDeepLinkChallengeId] = useState<string | null>(
+    null
+  );
   const [lang, setLang] = useState<Lang>(() => {
     try {
       return (localStorage.getItem("chess-lang") as Lang) || "en";
@@ -73,6 +77,28 @@ export function AppShell() {
       }
     })();
   }, [user, refreshProfile]);
+
+  // Handle ?corr=<uuid> and ?challenge=<uuid> deep links (from push notifications).
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const corr = q.get("corr");
+      const challenge = q.get("challenge");
+      let consumed = false;
+      if (corr && /^[0-9a-f-]{36}$/i.test(corr)) {
+        setDeepLinkCorrId(corr);
+        setView("corr");
+        consumed = true;
+      } else if (challenge && /^[0-9a-f-]{36}$/i.test(challenge)) {
+        setDeepLinkChallengeId(challenge);
+        setView("friends");
+        consumed = true;
+      }
+      if (consumed) window.history.replaceState({}, "", window.location.pathname);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const handleGameEnd = async (
     result: "win" | "loss" | "draw",
@@ -211,13 +237,30 @@ export function AppShell() {
       {view === "checkin" && <CheckinView lang={lang} />}
       {view === "ranks" && <LeaderboardView lang={lang} />}
       {view === "rooms" && <RoomView lang={lang} />}
-      {view === "friends" && <FriendsView lang={lang} />}
+      {view === "friends" && (
+        <FriendsView
+          lang={lang}
+          highlightChallengeId={deepLinkChallengeId}
+          onHighlightConsumed={() => setDeepLinkChallengeId(null)}
+        />
+      )}
       {view === "history" && <HistoryView lang={lang} />}
       {view === "quests" && <QuestsView lang={lang} />}
       {view === "push" && <PushSettings lang={lang} />}
-      {view === "corr" && <CorrView lang={lang} />}
+      {view === "corr" && (
+        <CorrView
+          lang={lang}
+          initialGameId={deepLinkCorrId}
+          onInitialConsumed={() => setDeepLinkCorrId(null)}
+        />
+      )}
       {view === "puzzle" && <PuzzleView lang={lang} />}
       {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}
+      <footer className="ch-footer">
+        {lang === "vi"
+          ? "Bản quyền thuộc về SynerWork Inc. Mọi quyền được bảo lưu."
+          : "Copyright by SynerWork Inc. All rights reserved."}
+      </footer>
     </div>
   );
 }

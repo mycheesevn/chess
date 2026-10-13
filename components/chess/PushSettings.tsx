@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   currentSubscription,
+  fetchPushStatus,
   pushCapability,
   pushPermission,
   sendTestPush,
@@ -11,6 +12,7 @@ import {
   unsubscribePush,
 } from "@/lib/push/client";
 import type { Lang } from "@/lib/chess/types";
+import type { PushStatus } from "@/lib/push/client";
 
 type PushState =
   | { kind: "unsupported"; reason: string }
@@ -22,6 +24,8 @@ type PushState =
 export function PushSettings({ lang }: { lang: Lang }) {
   const [state, setState] = useState<PushState>({ kind: "working" });
   const [tested, setTested] = useState(false);
+  const [diag, setDiag] = useState<PushStatus | null>(null);
+  const [showDiag, setShowDiag] = useState(false);
 
   const refresh = useCallback(async () => {
     const cap = pushCapability();
@@ -88,6 +92,13 @@ export function PushSettings({ lang }: { lang: Lang }) {
     setTimeout(() => setTested(false), 3000);
   };
 
+  const checkDiag = async () => {
+    const token = await accessToken();
+    if (!token) return;
+    setDiag(await fetchPushStatus(token));
+    setShowDiag(true);
+  };
+
   return (
     <div className="ch-view">
       <h2>🔔 {lang === "vi" ? "Thông báo đẩy" : "Push notifications"}</h2>
@@ -115,9 +126,55 @@ export function PushSettings({ lang }: { lang: Lang }) {
         </label>
       )}
       {state.kind === "on" && (
-        <button type="button" className="ch-btn" onClick={test}>
-          {tested ? "✓" : lang === "vi" ? "📨 Gửi thử" : "📨 Send test"}
-        </button>
+        <>
+          <button type="button" className="ch-btn" onClick={test}>
+            {tested ? "✓" : lang === "vi" ? "📨 Gửi thử" : "📨 Send test"}
+          </button>
+          <button
+            type="button"
+            className="ch-btn"
+            onClick={checkDiag}
+            style={{ marginTop: 6 }}
+          >
+            🔍 {lang === "vi" ? "Kiểm tra lỗi" : "Diagnose"}
+          </button>
+        </>
+      )}
+      {showDiag && diag && (
+        <div className="ch-hint" style={{ marginTop: 6 }}>
+          <div>
+            VAPID: {diag.vapidConfigured ? "✓" : "✗"}{" "}
+            {lang === "vi" ? "đã cấu hình" : "configured"}
+          </div>
+          <div>
+            Keys: {diag.keysMatch ? "✓" : "✗"}{" "}
+            {lang === "vi" ? "khớp nhau" : "match"}
+          </div>
+          <div>
+            {lang === "vi" ? "Đăng ký" : "Subscriptions"}: {diag.subscriptionCount}
+          </div>
+          {!diag.vapidConfigured && (
+            <div>
+              {lang === "vi"
+                ? "Thiếu VAPID key trên server."
+                : "Missing VAPID keys on server."}
+            </div>
+          )}
+          {diag.vapidConfigured && !diag.keysMatch && (
+            <div>
+              {lang === "vi"
+                ? "Public/private key không khớp — kiểm tra lại env vars."
+                : "Public/private keys don't match — check env vars."}
+            </div>
+          )}
+          {diag.subscriptionCount === 0 && (
+            <div>
+              {lang === "vi"
+                ? "Chưa có đăng ký nào — tắt rồi bật lại thông báo."
+                : "No subscriptions — toggle push off and on."}
+            </div>
+          )}
+        </div>
       )}
       <p className="ch-hint">
         {lang === "vi"

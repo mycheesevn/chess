@@ -75,7 +75,16 @@ function moveCount(moves: string): number {
   return moves.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function CorrView({ lang }: { lang: Lang }) {
+export function CorrView({
+  lang,
+  initialGameId,
+  onInitialConsumed,
+}: {
+  lang: Lang;
+  /** Deep-link: open this game on mount (e.g. from a notification). */
+  initialGameId?: string | null;
+  onInitialConsumed?: () => void;
+}) {
   const { user } = useAuth();
   const [games, setGames] = useState<CorrGameRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -101,6 +110,15 @@ export function CorrView({ lang }: { lang: Lang }) {
   useEffect(() => {
     if (activeId === null && user) load();
   }, [activeId, user, load]);
+
+  // Deep-link: open the requested game once the list loads.
+  useEffect(() => {
+    if (initialGameId && games.some((g) => g.id === initialGameId)) {
+      setActiveId(initialGameId);
+      onInitialConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialGameId, games]);
 
   const { page, pageCount, pageItems, setPage } = usePagination(games, 10);
 
@@ -348,6 +366,7 @@ function CorrBoard({
           : game.black_id
         : null;
     finishCorrGame(game.id, result, winnerId).catch(() => {});
+    notifyPushTrigger({ kind: "corr_end", gameId: game.id });
   }, [status, game]);
 
   const doMove = useCallback(
@@ -413,6 +432,7 @@ function CorrBoard({
     setResigning(true);
     try {
       await resignCorrGame(game.id);
+      notifyPushTrigger({ kind: "corr_end", gameId: game.id });
       const g = await getCorrGame(game.id);
       if (g) setGame(g);
     } catch {

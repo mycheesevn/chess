@@ -76,6 +76,16 @@ export async function subscribePush(accessToken: string): Promise<boolean> {
   if (perm !== "granted") throw new Error("denied");
 
   const reg = await swRegistration();
+  // Always drop any existing subscription first: after a VAPID key rotation
+  // the old subscription is cryptographically tied to the old key and the
+  // push service will reject sends. pushManager.subscribe() may otherwise
+  // return the stale subscription.
+  try {
+    const old = await reg.pushManager.getSubscription();
+    await old?.unsubscribe();
+  } catch {
+    /* ignore */
+  }
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
@@ -132,12 +142,34 @@ export async function sendTestPush(accessToken: string): Promise<boolean> {
   return res.ok;
 }
 
+export interface PushStatus {
+  vapidConfigured: boolean;
+  keysMatch: boolean;
+  subscriptionCount: number;
+}
+
+/** Server-side push diagnostics (no secrets exposed). */
+export async function fetchPushStatus(
+  accessToken: string
+): Promise<PushStatus | null> {
+  try {
+    const res = await fetch("/api/push/status", {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as PushStatus;
+  } catch {
+    return null;
+  }
+}
+
 /** Tell the server an event happened; it verifies and pushes to the other party. */
 export async function notifyPushTrigger(
   payload:
     | { kind: "challenge"; challengeId: string }
     | { kind: "turn"; matchId: string }
     | { kind: "corr"; gameId: string }
+    | { kind: "corr_end"; gameId: string }
 ): Promise<void> {
   try {
     const { createClient } = await import("@/lib/supabase/client");

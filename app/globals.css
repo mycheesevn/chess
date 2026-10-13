@@ -513,6 +513,15 @@ body {
 
 /* ---------- app shell nav ---------- */
 .ch-app { min-height: 100dvh; display: flex; flex-direction: column; }
+.ch-footer {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--muted, #888);
+  padding: 8px 0 6px;
+  margin-top: auto;
+  flex-shrink: 0;
+  user-select: none;
+}
 .ch-nav {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 8px 16px;
@@ -548,6 +557,15 @@ body {
   display: flex; align-items: center; gap: 12px;
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 8px; padding: 10px 14px;
+}
+.ch-challenge-highlight {
+  animation: ch-challenge-flash 1s ease-in-out 3;
+  border-color: #ffd54a;
+  box-shadow: 0 0 12px rgba(255, 213, 74, 0.6);
+}
+@keyframes ch-challenge-flash {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(255, 213, 74, 0.25); }
 }
 .ch-lb-rank { font-weight: 700; color: var(--accent); min-width: 36px; }
 .ch-lb-name { flex: 1; }
