@@ -776,32 +776,6 @@ export function ChessGame({
         </button>
       </div>
 
-      <div
-        className={`ch-status ${state.gameOver ? "ch-status-over" : ""} ${
-          thinking ? "ch-status-thinking" : ""
-        }`}
-        role="status"
-        aria-live="polite"
-      >
-        {thinking ? (
-          <span className="ch-thinking">
-            <span className="ch-spinner" aria-hidden="true" />
-            <span>
-              {s.thinking}
-              <span className="ch-dots" aria-hidden="true">
-                <span>.</span>
-                <span>.</span>
-                <span>.</span>
-              </span>
-              <span className="ch-think-meta">
-                {s.thinkMeta(s.levelLabel(level), getLevelConfig(level).depth)}
-              </span>
-            </span>
-          </span>
-        ) : (
-          statusText
-        )}
-      </div>
 
       <main className="ch-layout">
         <div className={`ch-board-area ${thinking ? "is-thinking" : ""}`}>
@@ -909,6 +883,32 @@ export function ChessGame({
       {restoreToast && <div className="ch-toast">{restoreToast}</div>}
 
         <aside className="ch-panel">
+          <div
+            className={`ch-status ${state.gameOver ? "ch-status-over" : ""} ${
+              thinking ? "ch-status-thinking" : ""
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {thinking ? (
+              <span className="ch-thinking">
+                <span className="ch-spinner" aria-hidden="true" />
+                <span>
+                  {s.thinking}
+                  <span className="ch-dots" aria-hidden="true">
+                    <span>.</span>
+                    <span>.</span>
+                    <span>.</span>
+                  </span>
+                  <span className="ch-think-meta">
+                    {s.thinkMeta(s.levelLabel(level), getLevelConfig(level).depth)}
+                  </span>
+                </span>
+              </span>
+            ) : (
+              statusText
+            )}
+          </div>
           <section>
             <h2>{s.computer}</h2>
             <div className="ch-captured-row">
