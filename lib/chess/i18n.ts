@@ -60,6 +60,71 @@ export interface Strings {
   authClose: string;
   authNoAccount: string;
   authHaveAccount: string;
+  stats: string;
+  statsTotalPlays: string;
+  statsGuests: string;
+  statsFinished: string;
+  statsAbandoned: string;
+  statsMembers: string;
+  statsNewMembers: string;
+  statsToday: string;
+  statsThisWeek: string;
+  statsThisMonth: string;
+  statsPlays: string;
+  statsByDay: string;
+  statsByWeek: string;
+  statsByMonth: string;
+  statsByYear: string;
+  statsLoading: string;
+  statsNotConfigured: string;
+  videoExport: string;
+  videoTitle: string;
+  videoDesc: string;
+  videoMoves: (n: number) => string;
+  videoStart: string;
+  videoRecording: string;
+  videoCancel: string;
+  videoShare: string;
+  videoDownload: string;
+  videoClose: string;
+  videoDone: string;
+  videoError: string;
+  videoSpeed: string;
+  videoSpeedSlow: string;
+  videoSpeedNormal: string;
+  videoSpeedFast: string;
+  videoMic: string;
+  videoMicDenied: string;
+  setupTitle: string;
+  setupPieces: string;
+  setupMove: string;
+  setupErase: string;
+  setupHint: string;
+  setupTurn: string;
+  setupStart: string;
+  setupReset: string;
+  setupClear: string;
+  setupErrKings: string;
+  setupErrPawns: string;
+  setupErrKingsAdjacent: string;
+  setupErrOpponentInCheck: string;
+  setupErrMaterial: string;
+  setupErrFinished: string;
+  libTagline: string;
+  libProgress: (done: number, total: number) => string;
+  libLessons: (done: number, total: number) => string;
+  libUnlockHint: (prevChapter: string) => string;
+  libBack: string;
+  libStep: (i: number, n: number) => string;
+  libDone: string;
+  libShowMove: string;
+  libFindMove: string;
+  libTryAgain: string;
+  libExploreDone: string;
+  libCompleteLesson: string;
+  libCelebration: string;
+  libNextLesson: string;
+  libBackToLibrary: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -140,6 +205,71 @@ export const STR: Record<Lang, Strings> = {
     authClose: "Close",
     authNoAccount: "New here?",
     authHaveAccount: "Have an account?",
+    stats: "Statistics",
+    statsTotalPlays: "Total plays",
+    statsGuests: "Guests",
+    statsFinished: "Finished",
+    statsAbandoned: "abandoned",
+    statsMembers: "Members",
+    statsNewMembers: "New members",
+    statsToday: "Today",
+    statsThisWeek: "This week",
+    statsThisMonth: "This month",
+    statsPlays: "Plays",
+    statsByDay: "Day",
+    statsByWeek: "Week",
+    statsByMonth: "Month",
+    statsByYear: "Year",
+    statsLoading: "Loading…",
+    statsNotConfigured: "Statistics are not available yet.",
+    videoExport: "Export video",
+    videoTitle: "Export game video",
+    videoDesc: "Record the whole game as a video clip with sound to share.",
+    videoMoves: (n: number) => `Game has ${n} moves`,
+    videoStart: "Start recording",
+    videoRecording: "Recording… keep the screen on.",
+    videoCancel: "Cancel",
+    videoShare: "Share",
+    videoDownload: "Download",
+    videoClose: "Close",
+    videoDone: "Done! Your video is ready.",
+    videoError: "Couldn't record video on this device.",
+    videoSpeed: "Speed",
+    videoSpeedSlow: "Slow",
+    videoSpeedNormal: "Normal",
+    videoSpeedFast: "Fast",
+    videoMic: "🎤 Record voice commentary",
+    videoMicDenied: "Couldn't access the microphone.",
+    setupTitle: "Board setup",
+    setupPieces: "Pieces",
+    setupMove: "Move",
+    setupErase: "Erase",
+    setupHint: "Choose a piece, then tap squares to place it. With Move, tap a piece and then its destination.",
+    setupTurn: "First move",
+    setupStart: "▶ Play this position",
+    setupReset: "Reset",
+    setupClear: "Clear",
+    setupErrKings: "Place exactly one white king and one black king.",
+    setupErrPawns: "Pawns cannot stand on the first or last rank.",
+    setupErrKingsAdjacent: "The two kings cannot be next to each other.",
+    setupErrOpponentInCheck: "The side that is not to move cannot be in check. Change the position or the first move.",
+    setupErrMaterial: "Each side can have at most 16 pieces and 8 pawns.",
+    setupErrFinished: "This position is already decided or drawn. Change it so the side to move can continue the game.",
+    libTagline: "An interactive journey: openings, traps, mating art and endgames. Complete lessons to unlock the next chapter.",
+    libProgress: (d, t) => `${d} / ${t} lessons completed`,
+    libLessons: (d, t) => `${d} / ${t} lessons`,
+    libUnlockHint: (prev) => `Finish “${prev}” to unlock`,
+    libBack: "← Back",
+    libStep: (i, n) => `Step ${i} / ${n}`,
+    libDone: "Completed",
+    libShowMove: "Show move ▶",
+    libFindMove: "Find the move!",
+    libTryAgain: "Not that one — try again!",
+    libExploreDone: "Done exploring",
+    libCompleteLesson: "Complete lesson",
+    libCelebration: "Lesson complete! Your progress has been saved.",
+    libNextLesson: "Next lesson →",
+    libBackToLibrary: "Back to library",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -208,6 +338,71 @@ export const STR: Record<Lang, Strings> = {
     authClose: "Đóng",
     authNoAccount: "Chưa có tài khoản?",
     authHaveAccount: "Đã có tài khoản?",
+    stats: "Thống kê",
+    statsTotalPlays: "Tổng lượt chơi",
+    statsGuests: "Khách",
+    statsFinished: "Chơi đến cùng",
+    statsAbandoned: "bỏ cuộc",
+    statsMembers: "Thành viên",
+    statsNewMembers: "Thành viên mới",
+    statsToday: "Hôm nay",
+    statsThisWeek: "Tuần này",
+    statsThisMonth: "Tháng này",
+    statsPlays: "Lượt chơi",
+    statsByDay: "Ngày",
+    statsByWeek: "Tuần",
+    statsByMonth: "Tháng",
+    statsByYear: "Năm",
+    statsLoading: "Đang tải…",
+    statsNotConfigured: "Thống kê chưa khả dụng.",
+    videoExport: "Xuất video",
+    videoTitle: "Xuất video ván cờ",
+    videoDesc: "Ghi lại toàn bộ ván cờ thành video clip có âm thanh để chia sẻ.",
+    videoMoves: (n: number) => `Ván cờ có ${n} nước đi`,
+    videoStart: "Bắt đầu ghi",
+    videoRecording: "Đang ghi hình… giữ màn hình sáng.",
+    videoCancel: "Hủy",
+    videoShare: "Chia sẻ",
+    videoDownload: "Tải xuống",
+    videoClose: "Đóng",
+    videoDone: "Xong! Video đã sẵn sàng.",
+    videoError: "Không ghi được video trên thiết bị này.",
+    videoSpeed: "Tốc độ",
+    videoSpeedSlow: "Chậm",
+    videoSpeedNormal: "Thường",
+    videoSpeedFast: "Nhanh",
+    videoMic: "🎤 Thu giọng bình luận",
+    videoMicDenied: "Không truy cập được micro.",
+    setupTitle: "Sắp xếp bàn cờ",
+    setupPieces: "Quân cờ",
+    setupMove: "Di chuyển",
+    setupErase: "Xóa",
+    setupHint: "Chọn một quân rồi chạm vào các ô để đặt. Với Di chuyển, chạm vào quân rồi chạm ô đích.",
+    setupTurn: "Lượt đi đầu tiên",
+    setupStart: "▶ Chơi thế cờ này",
+    setupReset: "Đặt lại",
+    setupClear: "Xóa sạch",
+    setupErrKings: "Hãy đặt đúng một Vua trắng và một Vua đen.",
+    setupErrPawns: "Tốt không thể đứng ở hàng đầu tiên hoặc hàng cuối cùng.",
+    setupErrKingsAdjacent: "Hai Vua không thể đứng cạnh nhau.",
+    setupErrOpponentInCheck: "Bên không tới lượt đi không thể đang bị chiếu. Hãy đổi thế cờ hoặc lượt đi đầu tiên.",
+    setupErrMaterial: "Mỗi bên tối đa 16 quân và 8 Tốt.",
+    setupErrFinished: "Thế cờ này đã kết thúc hoặc hòa. Hãy thay đổi để bên tới lượt có thể tiếp tục ván cờ.",
+    libTagline: "Hành trình tương tác: khai cuộc, bẫy, sát pháp và tàn cuộc. Hoàn thành bài học để mở chương tiếp theo.",
+    libProgress: (d, t) => `Đã hoàn thành ${d} / ${t} bài học`,
+    libLessons: (d, t) => `${d} / ${t} bài học`,
+    libUnlockHint: (prev) => `Hoàn thành “${prev}” để mở khóa`,
+    libBack: "← Quay lại",
+    libStep: (i, n) => `Bước ${i} / ${n}`,
+    libDone: "Đã hoàn thành",
+    libShowMove: "Xem nước đi ▶",
+    libFindMove: "Hãy tìm nước đi!",
+    libTryAgain: "Chưa đúng — thử lại nhé!",
+    libExploreDone: "Đã khám phá xong",
+    libCompleteLesson: "Hoàn thành bài học",
+    libCelebration: "Hoàn thành bài học! Tiến độ của bạn đã được lưu.",
+    libNextLesson: "Bài tiếp theo →",
+    libBackToLibrary: "Về thư viện",
   },
 };
 
