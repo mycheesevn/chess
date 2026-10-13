@@ -5,7 +5,12 @@ export interface Tournament {
   room_id: string;
   name: string;
   status: string;
-  pairings: Array<{ white: string; black: string; result: string | null }>;
+  pairings: Array<{
+    white: string;
+    black: string;
+    result: string | null;
+    match_id?: string | null;
+  }>;
 }
 
 export async function listTournaments(roomId: string): Promise<Tournament[]> {
@@ -47,4 +52,24 @@ export function standings(t: Tournament): Array<{ player: string; score: number 
   return [...scores.entries()]
     .map(([player, score]) => ({ player, score }))
     .sort((a, b) => b.score - a.score);
+}
+
+/** Start the next unplayed pairing as a live match (leader, via RPC).
+ *  Returns the created match id. */
+export async function tournamentNextMatch(tournamentId: string): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("chess_tournament_next_match", {
+    p_tournament_id: tournamentId,
+  });
+  if (error) throw error;
+  return (data as { id: string }).id;
+}
+
+/** End an open tournament early (leader, via RPC). */
+export async function cancelTournament(tournamentId: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("chess_cancel_tournament", {
+    p_tournament_id: tournamentId,
+  });
+  if (error) throw error;
 }

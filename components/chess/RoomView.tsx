@@ -1,36 +1,121 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  closeRoom,
   createRoom,
+  fetchHotRooms,
+  fetchNames,
+  fetchPastMatches,
+  fetchRoom,
+  fetchRoomMembers,
+  getActiveMatch,
+  getLastFinishedMatch,
   joinRoom,
+  kickMember,
+  leaveRoom,
   listMyRooms,
   listPublicRooms,
-  startMatch,
+  roomErrorKey,
+  setMemberRole,
+  setRoomPublic,
+  setTurnOrder,
+  startNextMatch,
+  subscribeRoom,
+  updateRoomRules,
+  type HotRoom,
+  type PublicRoom,
   type Room,
+  type RoomMatch,
+  type RoomMember,
 } from "@/lib/supabase/rooms";
 import { useAuth } from "./AuthProvider";
-import { RoomMatchView } from "./RoomMatchView";
+import { GuestRooms } from "./GuestRooms";
+import { RoomMatchView, reasonLabel } from "./RoomMatchView";
 import { TournamentView } from "./TournamentView";
+import { Pagination, usePagination } from "./Pagination";
 import type { Lang } from "@/lib/chess/types";
+
+const MAX_PLAYER_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12, 16, 20];
+
+function errText(key: string, lang: Lang): string {
+  const vi: Record<string, string> = {
+    room_not_found: "Không tìm thấy phòng.",
+    room_full: "Phòng đã đầy.",
+    room_closed: "Phòng đã đóng.",
+    not_leader: "Chỉ trưởng phòng mới làm được.",
+    leader_cannot_leave: "Trưởng phòng không thể rời phòng (hãy đóng phòng).",
+    leader_must_play: "Trưởng phòng phải là người chơi.",
+    cannot_kick_self: "Không thể tự đuổi mình.",
+    room_need_two_players: "Cần ít nhất 2 người chơi trong thứ tự thi đấu.",
+    match_in_progress: "Đang có ván đấu diễn ra.",
+    match_not_found: "Không tìm thấy ván đấu.",
+    not_allowed: "Bạn không có quyền làm việc này.",
+    generic: "Có lỗi xảy ra.",
+  };
+  const en: Record<string, string> = {
+    room_not_found: "Room not found.",
+    room_full: "The room is full.",
+    room_closed: "The room is closed.",
+    not_leader: "Only the room leader can do this.",
+    leader_cannot_leave: "The leader cannot leave (close the room instead).",
+    leader_must_play: "The leader must be a player.",
+    cannot_kick_self: "You cannot kick yourself.",
+    room_need_two_players: "Need at least 2 players in the match order.",
+    match_in_progress: "A match is already in progress.",
+    match_not_found: "Match not found.",
+    not_allowed: "You are not allowed to do this.",
+    generic: "Something went wrong.",
+  };
+  return (lang === "vi" ? vi : en)[key] ?? (lang === "vi" ? vi.generic : en.generic);
+}
 
 export function RoomView({
   lang,
   initialRoomId,
   onInitialConsumed,
+  initialRoomCode,
+  onRoomCodeConsumed,
+  onRequireLogin,
 }: {
   lang: Lang;
   /** Open this room as soon as it's in the room list (e.g. after accepting a challenge). */
   initialRoomId?: string | null;
   onInitialConsumed?: () => void;
+  /** Auto-join this room code (from a ?room=CODE invite link). */
+  initialRoomCode?: string | null;
+  onRoomCodeConsumed?: () => void;
+  onRequireLogin?: () => void;
 }) {
   const { user } = useAuth();
   const [myRooms, setMyRooms] = useState<Room[]>([]);
-  const [publicRooms, setPublicRooms] = useState<Room[]>([]);
+  const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
+  const [hotRooms, setHotRooms] = useState<HotRoom[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const consumedRef = useRef<string | null>(null);
+  const consumedCodeRef = useRef<string | null>(null);
+  const [roomName, setRoomName] = useState("");
+  const [maxPlayers, setMaxPlayers] = useState(8);
+  const [isPublic, setIsPublic] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  // Open a deep-linked room (challenge accept) once the room list is loaded.
+  const load = useCallback(async () => {
+    try {
+      setMyRooms(await listMyRooms());
+      setPublicRooms(await listPublicRooms());
+      setHotRooms(await fetchHotRooms());
+    } catch {
+      /* not configured */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) load();
+  }, [user, load]);
+
+  // Open a deep-linked room (challenge accept) once the list is loaded.
   useEffect(() => {
     if (!initialRoomId || consumedRef.current === initialRoomId) return;
     const found = myRooms.find((r) => r.id === initialRoomId);
@@ -40,40 +125,53 @@ export function RoomView({
       onInitialConsumed?.();
     }
   }, [initialRoomId, myRooms, onInitialConsumed]);
-  const [roomName, setRoomName] = useState("");
-  const [isPublic, setIsPublic] = useState(false);
-  const [joinCode, setJoinCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
 
-  const load = async () => {
-    try {
-      setMyRooms(await listMyRooms());
-      setPublicRooms(await listPublicRooms());
-    } catch {
-      /* not configured */
-    }
-  };
-
+  // Invite link (?room=CODE) while logged in: join (idempotent) + open.
   useEffect(() => {
-    if (user) load();
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!initialRoomCode || !user || consumedCodeRef.current === initialRoomCode)
+      return;
+    consumedCodeRef.current = initialRoomCode;
+    joinRoom(initialRoomCode)
+      .then(async (room) => {
+        await load();
+        setActiveRoom(room);
+      })
+      .catch((e) => setMsg(errText(roomErrorKey(e), lang)))
+      .finally(() => onRoomCodeConsumed?.());
+  }, [initialRoomCode, user, lang, load, onRoomCodeConsumed]);
 
   if (!user) {
     return (
-      <div className="ch-view">
-        <p>{lang === "vi" ? "Đăng nhập để chơi phòng." : "Sign in to play in rooms."}</p>
-      </div>
+      <GuestRooms
+        lang={lang}
+        initialCode={initialRoomCode}
+        onCodeConsumed={onRoomCodeConsumed}
+        onRequireLogin={onRequireLogin}
+      />
     );
   }
 
   if (activeRoom) {
     return (
       <div className="ch-view">
-        <button type="button" className="ch-btn ch-btn-sm" onClick={() => setActiveRoom(null)}>
+        <button
+          type="button"
+          className="ch-btn ch-btn-sm"
+          onClick={() => {
+            setActiveRoom(null);
+            load();
+          }}
+        >
           ← {activeRoom.name} ({activeRoom.code})
         </button>
-        <RoomDetail room={activeRoom} lang={lang} onUpdate={load} />
+        <RoomDetail
+          room={activeRoom}
+          lang={lang}
+          onExit={() => {
+            setActiveRoom(null);
+            load();
+          }}
+        />
       </div>
     );
   }
@@ -83,12 +181,12 @@ export function RoomView({
     setBusy(true);
     setMsg("");
     try {
-      const room = await createRoom(roomName.trim(), isPublic);
+      const room = await createRoom(roomName.trim(), isPublic, maxPlayers);
       setRoomName("");
       await load();
       setActiveRoom(room);
-    } catch {
-      setMsg(lang === "vi" ? "Lỗi tạo phòng." : "Failed to create room.");
+    } catch (e) {
+      setMsg(errText(roomErrorKey(e), lang));
     } finally {
       setBusy(false);
     }
@@ -103,8 +201,27 @@ export function RoomView({
       setJoinCode("");
       await load();
       setActiveRoom(room);
-    } catch {
-      setMsg(lang === "vi" ? "Không tìm thấy phòng." : "Room not found.");
+    } catch (e) {
+      setMsg(errText(roomErrorKey(e), lang));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openListedRoom = async (id: string, code: string) => {
+    const mine = myRooms.find((r) => r.id === id);
+    if (mine) {
+      setActiveRoom(mine);
+      return;
+    }
+    setBusy(true);
+    setMsg("");
+    try {
+      const room = await joinRoom(code);
+      await load();
+      setActiveRoom(room);
+    } catch (e) {
+      setMsg(errText(roomErrorKey(e), lang));
     } finally {
       setBusy(false);
     }
@@ -120,7 +237,20 @@ export function RoomView({
           onChange={(e) => setRoomName(e.target.value)}
           placeholder={lang === "vi" ? "Tên phòng mới" : "New room name"}
           className="ch-input"
+          maxLength={60}
         />
+        <select
+          className="ch-input ch-select-sm"
+          value={maxPlayers}
+          onChange={(e) => setMaxPlayers(Number(e.target.value))}
+          aria-label={lang === "vi" ? "Số người tối đa" : "Max players"}
+        >
+          {MAX_PLAYER_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              👥 {n}
+            </option>
+          ))}
+        </select>
         <label className="ch-check">
           <input
             type="checkbox"
@@ -156,7 +286,11 @@ export function RoomView({
           {myRooms.map((r) => (
             <li key={r.id}>
               <button type="button" className="ch-room-row" onClick={() => setActiveRoom(r)}>
-                <span>{r.name}</span>
+                <span>
+                  {r.status === "playing" ? "🔴 " : ""}
+                  {r.name}
+                  {r.status === "closed" ? (lang === "vi" ? " (đã đóng)" : " (closed)") : ""}
+                </span>
                 <code>{r.code}</code>
               </button>
             </li>
@@ -171,60 +305,549 @@ export function RoomView({
         <ul className="ch-board-list">
           {publicRooms.map((r) => (
             <li key={r.id}>
-              <button type="button" className="ch-room-row" onClick={() => setActiveRoom(r)}>
-                <span>{r.name}</span>
-                <code>{r.code}</code>
+              <button
+                type="button"
+                className="ch-room-row"
+                disabled={busy}
+                onClick={() => openListedRoom(r.id, r.code)}
+              >
+                <span>
+                  {r.has_active_match ? "🔴 " : ""}
+                  {r.name}
+                </span>
+                <span className="ch-hint">
+                  👥 {r.member_count}/{r.max_players}
+                  {r.has_active_match ? (lang === "vi" ? " · đang đấu" : " · live") : ""}
+                </span>
               </button>
             </li>
           ))}
         </ul>
       )}
+
+      {hotRooms.length > 0 && (
+        <>
+          <h3>🔥 {lang === "vi" ? "Phòng sôi động" : "Hot rooms"}</h3>
+          <ul className="ch-board-list">
+            {hotRooms.map((r) => (
+              <li key={r.room_id}>
+                <button
+                  type="button"
+                  className="ch-room-row"
+                  disabled={busy}
+                  onClick={() => openListedRoom(r.room_id, r.code)}
+                >
+                  <span>{r.name}</span>
+                  <span className="ch-hint">
+                    🔥 {r.matches_7d} {lang === "vi" ? "ván/7 ngày" : "games/7d"} · 👥 {r.member_count}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }
 
+/* ------------------------------ Room detail ------------------------------ */
+
 function RoomDetail({
-  room,
+  room: initialRoom,
   lang,
-  onUpdate,
+  onExit,
 }: {
   room: Room;
   lang: Lang;
-  onUpdate: () => void;
+  onExit: () => void;
 }) {
   const { user } = useAuth();
-  const [starting, setStarting] = useState(false);
-  const isLeader = user && room.leader_id === user.id;
+  const [room, setRoom] = useState<Room>(initialRoom);
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [past, setPast] = useState<RoomMatch[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [viewMatchId, setViewMatchId] = useState<string | null>(null);
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  const [kicked, setKicked] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState<"code" | "link" | null>(null);
+  const [rulesDraft, setRulesDraft] = useState(initialRoom.rules ?? "");
+  const [rulesSaved, setRulesSaved] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [armKick, setArmKick] = useState<string | null>(null);
+  const [reloadSignal, setReloadSignal] = useState(0);
+  const lastActiveIdRef = useRef<string | null>(null);
+  const initialFollowDoneRef = useRef(false);
+  const loadedOnceRef = useRef(false);
 
-  const doStart = async () => {
-    const order = room.turn_order ?? [];
-    if (order.length < 2 || !isLeader) return;
-    setStarting(true);
+  const isLeader = !!user && room.leader_id === user.id;
+
+  const loadAll = useCallback(async () => {
     try {
-      // First two in turn order play; white = first, black = second
-      await startMatch(room.id, order[0], order[1]);
-      onUpdate();
+      const [freshRoom, memberList, pastList, active, lastFin] = await Promise.all([
+        fetchRoom(initialRoom.id),
+        fetchRoomMembers(initialRoom.id).catch(() => [] as RoomMember[]),
+        fetchPastMatches(initialRoom.id).catch(() => [] as RoomMatch[]),
+        getActiveMatch(initialRoom.id),
+        getLastFinishedMatch(initialRoom.id),
+      ]);
+      if (freshRoom) setRoom(freshRoom);
+      setMembers(memberList);
+      setPast(pastList);
+      // Kicked (or removed) while inside: my member row disappeared.
+      if (loadedOnceRef.current && user && memberList.length > 0 &&
+          !memberList.some((m) => m.user_id === user.id)) {
+        setKicked(true);
+      }
+      loadedOnceRef.current = true;
+      // Names: members first, then any past-match players who left.
+      const merged: Record<string, string> = {};
+      for (const m of memberList) merged[m.user_id] = m.name;
+      const missing = new Set<string>();
+      for (const p of pastList) {
+        for (const id of [p.white_id, p.black_id]) {
+          if (id && !merged[id]) missing.add(id);
+        }
+      }
+      if (missing.size > 0) {
+        const extra = await fetchNames([...missing]).catch(() => ({}));
+        Object.assign(merged, extra);
+      }
+      setNames(merged);
+      // Follow the live match; on first load also surface the last
+      // finished match so its result panel survives a reload.
+      setActiveMatchId(active?.id ?? null);
+      if (active) {
+        initialFollowDoneRef.current = true;
+        if (active.id !== lastActiveIdRef.current) {
+          lastActiveIdRef.current = active.id;
+          setViewMatchId(active.id);
+        }
+      } else if (!initialFollowDoneRef.current) {
+        initialFollowDoneRef.current = true;
+        if (lastFin) setViewMatchId(lastFin.id);
+      }
+      setReloadSignal((n) => n + 1);
     } catch {
-      /* ignore */
+      /* offline / not configured */
+    }
+  }, [initialRoom.id, user]);
+
+  const loadAllRef = useRef(loadAll);
+  loadAllRef.current = loadAll;
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  // Realtime nudges + 4s polling fallback (realtime can silently fail).
+  useEffect(() => {
+    const ch = subscribeRoom(initialRoom.id, {
+      myUserId: user?.id ?? null,
+      onChange: () => loadAllRef.current(),
+      onKicked: () => setKicked(true),
+    });
+    const t = window.setInterval(() => loadAllRef.current(), 4000);
+    return () => {
+      ch.unsubscribe();
+      window.clearInterval(t);
+    };
+  }, [initialRoom.id, user?.id]);
+
+  const pastPaging = usePagination(past, 10);
+
+  if (kicked) {
+    return (
+      <div className="ch-room-detail">
+        <p className="ch-msg">
+          {lang === "vi" ? "Bạn đã bị đuổi khỏi phòng." : "You were removed from the room."}
+        </p>
+        <button type="button" className="ch-btn" onClick={onExit}>
+          ← {lang === "vi" ? "Về danh sách phòng" : "Back to rooms"}
+        </button>
+      </div>
+    );
+  }
+
+  const nameOf = (id: string | null | undefined) =>
+    (id && names[id]) || "Player";
+  const playerIds = members.filter((m) => m.role === "player").map((m) => m.user_id);
+  const orderPreview = [
+    ...room.turn_order.filter((id) => playerIds.includes(id)),
+    ...playerIds.filter((id) => !room.turn_order.includes(id)),
+  ];
+  const nextPair =
+    orderPreview.length >= 2 ? ([orderPreview[0], orderPreview[1]] as const) : null;
+
+  const act = async (fn: () => Promise<void>, after?: () => void) => {
+    setMsg("");
+    setBusy(true);
+    try {
+      await fn();
+      await loadAll();
+      after?.();
+    } catch (e) {
+      setMsg(errText(roomErrorKey(e), lang));
     } finally {
-      setStarting(false);
+      setBusy(false);
     }
   };
 
+  const doStart = async () => {
+    setMsg("");
+    setBusy(true);
+    try {
+      const m = await startNextMatch(room.id);
+      lastActiveIdRef.current = m.id;
+      setViewMatchId(m.id);
+      await loadAll();
+    } catch (e) {
+      setMsg(errText(roomErrorKey(e), lang));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const moveInOrder = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= orderPreview.length) return;
+    const next = [...orderPreview];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    act(() => setTurnOrder(room.id, next));
+  };
+
+  const copyText = async (text: string, which: "code" | "link") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
+      window.setTimeout(() => setCopied(null), 2000);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  /* Viewing a match takes over the detail (PacClone pattern); the
+     finished match stays until "Back to room". */
+  if (viewMatchId) {
+    return (
+      <div className="ch-room-detail">
+        <RoomMatchView
+          key={viewMatchId}
+          roomId={room.id}
+          matchId={viewMatchId}
+          lang={lang}
+          isLeader={isLeader}
+          onBackToRoom={() => setViewMatchId(null)}
+          onViewMatch={(id) => setViewMatchId(id)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div>
-      {isLeader && (
-        <button
-          type="button"
-          className="ch-btn ch-btn-primary"
-          disabled={starting}
-          onClick={doStart}
-        >
-          ▶ {lang === "vi" ? "Bắt đầu ván mới" : "Start new match"}
-        </button>
+    <div className="ch-room-detail">
+      {/* code card */}
+      <div className="ch-room-code-card">
+        <div>
+          <span className="ch-hint">{lang === "vi" ? "Mã phòng" : "Room code"}</span>
+          <div className="ch-room-code-big">{room.code}</div>
+          <span className="ch-hint">
+            {room.status === "closed"
+              ? lang === "vi"
+                ? "Đã đóng"
+                : "Closed"
+              : room.status === "playing"
+                ? "🔴 " + (lang === "vi" ? "Đang đấu" : "Live")
+                : lang === "vi"
+                  ? "Đang mở"
+                  : "Open"}
+            {" · "}👥 {members.length}/{room.max_players}
+            {" · "}
+            {room.is_public
+              ? lang === "vi"
+                ? "Công khai"
+                : "Public"
+              : lang === "vi"
+                ? "Riêng tư"
+                : "Private"}
+          </span>
+        </div>
+        <div className="ch-room-code-actions">
+          <button type="button" className="ch-btn ch-btn-sm" onClick={() => copyText(room.code, "code")}>
+            {copied === "code" ? (lang === "vi" ? "Đã chép!" : "Copied!") : `📋 ${lang === "vi" ? "Chép mã" : "Copy code"}`}
+          </button>
+          <button
+            type="button"
+            className="ch-btn ch-btn-sm"
+            onClick={() => copyText(`${window.location.origin}/?room=${room.code}`, "link")}
+          >
+            {copied === "link" ? (lang === "vi" ? "Đã chép!" : "Copied!") : `🔗 ${lang === "vi" ? "Chép link mời" : "Copy invite link"}`}
+          </button>
+          {isLeader && room.status !== "closed" && (
+            <button
+              type="button"
+              className="ch-btn ch-btn-sm"
+              disabled={busy}
+              onClick={() => act(() => setRoomPublic(room.id, !room.is_public))}
+            >
+              {room.is_public
+                ? lang === "vi"
+                  ? "🔒 Chuyển riêng tư"
+                  : "🔒 Make private"
+                : lang === "vi"
+                  ? "🌐 Chuyển công khai"
+                  : "🌐 Make public"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {msg && <p className="ch-msg">{msg}</p>}
+
+      {/* start / live match */}
+      {activeMatchId ? (
+        <div className="ch-row-gap">
+          <span className="ch-hint">🔴 {lang === "vi" ? "Đang có ván đấu diễn ra" : "A match is live"}</span>
+          <button type="button" className="ch-btn ch-btn-primary ch-btn-sm" onClick={() => setViewMatchId(activeMatchId)}>
+            👁 {lang === "vi" ? "Xem ván đấu" : "Watch match"}
+          </button>
+        </div>
+      ) : isLeader && room.status !== "closed" ? (
+        <div className="ch-row-gap">
+          <button type="button" className="ch-btn ch-btn-primary" disabled={busy} onClick={doStart}>
+            ▶ {lang === "vi" ? "Bắt đầu ván mới" : "Start match"}
+          </button>
+          {nextPair && (
+            <span className="ch-hint">
+              {lang === "vi" ? "Tiếp theo: " : "Next: "}⚪ {nameOf(nextPair[0])}{" "}
+              {lang === "vi" ? "gặp" : "vs"} ⚫ {nameOf(nextPair[1])}
+            </span>
+          )}
+        </div>
+      ) : (
+        <p className="ch-hint">
+          {room.status === "closed"
+            ? lang === "vi"
+              ? "Phòng đã đóng."
+              : "This room is closed."
+            : lang === "vi"
+              ? "Chờ trưởng phòng bắt đầu ván…"
+              : "Waiting for the leader to start…"}
+        </p>
       )}
-      <RoomMatchView roomId={room.id} matchId={null} lang={lang} />
-      <TournamentView roomId={room.id} isLeader={!!isLeader} lang={lang} />
+
+      {/* rules */}
+      <div className="ch-room-section">
+        <h4>📜 {lang === "vi" ? "Nội quy phòng" : "Room rules"}</h4>
+        {isLeader ? (
+          <>
+            <textarea
+              className="ch-input ch-rules-input"
+              value={rulesDraft}
+              onChange={(e) => {
+                setRulesDraft(e.target.value);
+                setRulesSaved(false);
+              }}
+              placeholder={
+                lang === "vi"
+                  ? "Ví dụ: không chat tục, thua không quịt…"
+                  : "e.g. be kind, no rage-quitting…"
+              }
+              maxLength={500}
+              rows={2}
+            />
+            <button
+              type="button"
+              className="ch-btn ch-btn-sm"
+              disabled={busy}
+              onClick={() =>
+                act(
+                  () => updateRoomRules(room.id, rulesDraft),
+                  () => setRulesSaved(true)
+                )
+              }
+            >
+              {rulesSaved ? (lang === "vi" ? "Đã lưu ✓" : "Saved ✓") : lang === "vi" ? "Lưu nội quy" : "Save rules"}
+            </button>
+          </>
+        ) : room.rules ? (
+          <p>{room.rules}</p>
+        ) : (
+          <p className="ch-hint">—</p>
+        )}
+      </div>
+
+      {/* members */}
+      <div className="ch-room-section">
+        <h4>
+          👥 {lang === "vi" ? "Thành viên" : "Members"} ({members.length})
+        </h4>
+        <ul className="ch-member-list">
+          {members.map((m) => {
+            const orderIdx = orderPreview.indexOf(m.user_id);
+            const isMe = user?.id === m.user_id;
+            return (
+              <li key={m.user_id} className="ch-member-row">
+                {m.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.avatar_url} alt="" className="ch-member-avatar" />
+                ) : (
+                  <span className="ch-member-avatar ch-member-avatar-fallback">
+                    {m.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="ch-member-name">
+                  {m.name}
+                  {room.leader_id === m.user_id ? " 👑" : ""}
+                  {isMe ? (lang === "vi" ? " (bạn)" : " (you)") : ""}
+                </span>
+                {m.role === "player" && orderIdx >= 0 && (
+                  <span className="ch-order-num">#{orderIdx + 1}</span>
+                )}
+                <span className="ch-role-chip">
+                  {m.role === "player"
+                    ? lang === "vi"
+                      ? "Người chơi"
+                      : "Player"
+                    : lang === "vi"
+                      ? "Khán giả"
+                      : "Spectator"}
+                </span>
+                {isLeader && !isMe && (
+                  <span className="ch-member-controls">
+                    {m.role === "player" && (
+                      <>
+                        <button type="button" className="ch-btn ch-btn-sm" disabled={busy || orderIdx <= 0} onClick={() => moveInOrder(orderIdx, -1)} aria-label="up">▲</button>
+                        <button type="button" className="ch-btn ch-btn-sm" disabled={busy || orderIdx >= orderPreview.length - 1} onClick={() => moveInOrder(orderIdx, 1)} aria-label="down">▼</button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="ch-btn ch-btn-sm"
+                      disabled={busy}
+                      onClick={() =>
+                        act(() =>
+                          setMemberRole(room.id, m.user_id, m.role === "player" ? "spectator" : "player")
+                        )
+                      }
+                      title={m.role === "player" ? (lang === "vi" ? "Chuyển khán giả" : "Make spectator") : lang === "vi" ? "Chuyển người chơi" : "Make player"}
+                    >
+                      {m.role === "player" ? "👀" : "🎮"}
+                    </button>
+                    {armKick === m.user_id ? (
+                      <button
+                        type="button"
+                        className="ch-btn ch-btn-sm ch-btn-danger"
+                        disabled={busy}
+                        onClick={() =>
+                          act(
+                            () => kickMember(room.id, m.user_id),
+                            () => setArmKick(null)
+                          )
+                        }
+                      >
+                        {lang === "vi" ? "Đuổi?" : "Kick?"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="ch-btn ch-btn-sm"
+                        onClick={() => {
+                          setArmKick(m.user_id);
+                          window.setTimeout(() => setArmKick(null), 3000);
+                        }}
+                        title={lang === "vi" ? "Đuổi khỏi phòng" : "Kick from room"}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="ch-hint">
+          {lang === "vi"
+            ? "Thứ tự thi đấu: hai người đầu sẽ đấu ván tiếp theo, người đầu xoay xuống cuối sau mỗi ván."
+            : "Match order: the first two play the next match; the first rotates to the end after each match."}
+        </p>
+        <div className="ch-row-gap">
+          {!isLeader &&
+            (confirmLeave ? (
+              <button
+                type="button"
+                className="ch-btn ch-btn-sm ch-btn-danger"
+                disabled={busy}
+                onClick={() => act(() => leaveRoom(room.id), onExit)}
+              >
+                {lang === "vi" ? "Xác nhận rời phòng?" : "Confirm leave?"}
+              </button>
+            ) : (
+              <button type="button" className="ch-btn ch-btn-sm" onClick={() => setConfirmLeave(true)}>
+                🚪 {lang === "vi" ? "Rời phòng" : "Leave room"}
+              </button>
+            ))}
+          {isLeader &&
+            room.status !== "closed" &&
+            (confirmClose ? (
+              <button
+                type="button"
+                className="ch-btn ch-btn-sm ch-btn-danger"
+                disabled={busy}
+                onClick={() => act(() => closeRoom(room.id))}
+              >
+                {lang === "vi" ? "Giải tán phòng này?" : "Close this room for everyone?"}
+              </button>
+            ) : (
+              <button type="button" className="ch-btn ch-btn-sm" onClick={() => setConfirmClose(true)}>
+                🔒 {lang === "vi" ? "Đóng phòng" : "Close room"}
+              </button>
+            ))}
+        </div>
+      </div>
+
+      {/* past matches */}
+      {past.length > 0 && (
+        <div className="ch-room-section">
+          <h4>🕘 {lang === "vi" ? "Các ván đã đấu" : "Past matches"}</h4>
+          <ul className="ch-board-list">
+            {pastPaging.pageItems.map((p) => {
+              const plies = p.moves ? p.moves.trim().split(/\s+/).filter(Boolean).length : 0;
+              return (
+                <li key={p.id}>
+                  <button type="button" className="ch-room-row" onClick={() => setViewMatchId(p.id)}>
+                    <span>
+                      {p.result === "white" ? "⚪" : p.result === "black" ? "⚫" : "½"}{" "}
+                      {nameOf(p.white_id)} · {nameOf(p.black_id)}
+                    </span>
+                    <span className="ch-hint">
+                      {plies} {lang === "vi" ? "nước" : "plies"}
+                      {p.reason ? ` · ${reasonLabel(p.reason, lang)}` : ""}
+                      {p.finished_at
+                        ? ` · ${new Date(p.finished_at).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US")}`
+                        : ""}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <Pagination page={pastPaging.page} pageCount={pastPaging.pageCount} onPage={pastPaging.setPage} />
+        </div>
+      )}
+
+      <TournamentView
+        roomId={room.id}
+        isLeader={isLeader}
+        lang={lang}
+        names={names}
+        reloadSignal={reloadSignal}
+        onViewMatch={(id) => setViewMatchId(id)}
+      />
     </div>
   );
 }
