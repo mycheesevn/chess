@@ -412,8 +412,33 @@ body {
 }
 
 .ch-mate-crown {
-  font-size: 2.6rem;
   animation: crown-bounce 0.9s ease-in-out 0.5s infinite;
+}
+
+.ch-mate-crown svg {
+  width: 46px;
+  height: 46px;
+  display: block;
+}
+
+.ch-promo-piece {
+  width: 46px;
+  height: 46px;
+  display: block;
+  margin: 0 auto;
+}
+
+.ch-cap-piece {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.ch-clock-king {
+  width: 17px;
+  height: 17px;
+  display: inline-block;
+  vertical-align: -3px;
 }
 
 @keyframes mate-zoom {

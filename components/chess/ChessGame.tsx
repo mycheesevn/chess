@@ -36,7 +36,6 @@ import {
   Board as BoardT,
   CastlingRights,
   Color,
-  GLYPHS,
   Lang,
   Level,
   Move,
@@ -44,6 +43,7 @@ import {
   PieceType,
   opposite,
 } from "@/lib/chess/types";
+import { VectorPiece } from "./Pieces";
 
 interface Snapshot {
   board: BoardT;
@@ -819,7 +819,10 @@ export function ChessGame({
                 <span
                   className={`ch-clock${state.turn === aiColor && !state.gameOver ? " active" : ""}${clocksMs[aiColor] < 20000 ? " low" : ""}`}
                 >
-                  {aiColor === "white" ? "♔" : "♚"} {fmtClock(clocksMs[aiColor])}
+                  <svg viewBox="0 0 100 100" className="ch-clock-king" aria-hidden="true">
+                    <VectorPiece type="K" color={aiColor} />
+                  </svg>{" "}
+                  {fmtClock(clocksMs[aiColor])}
                 </span>
               </div>
             )}
@@ -869,7 +872,9 @@ export function ChessGame({
                         onClick={() => choosePromotion(pt)}
                         title={s.pieceName(pt)}
                       >
-                        {GLYPHS[pt]}
+                        <svg viewBox="0 0 100 100" className="ch-promo-piece" aria-hidden="true">
+                          <VectorPiece type={pt} color={playerColor} />
+                        </svg>
                       </button>
                     ))}
                   </div>
@@ -879,7 +884,11 @@ export function ChessGame({
             {isMate && (
               <div className="ch-mate-overlay" aria-hidden="true">
                 <div key={state.log.length} className="ch-mate-banner">
-                  <span className="ch-mate-crown">♔</span>
+                  <span className="ch-mate-crown">
+                    <svg viewBox="0 0 100 100" aria-hidden="true">
+                      <VectorPiece type="K" color="white" />
+                    </svg>
+                  </span>
                   <span>{s.checkmateBadge}</span>
                 </div>
               </div>
@@ -911,7 +920,10 @@ export function ChessGame({
               <span
                 className={`ch-clock${state.turn === playerColor && !state.gameOver ? " active" : ""}${clocksMs[playerColor] < 20000 ? " low" : ""}`}
               >
-                {playerColor === "white" ? "♔" : "♚"} {fmtClock(clocksMs[playerColor])}
+                <svg viewBox="0 0 100 100" className="ch-clock-king" aria-hidden="true">
+                  <VectorPiece type="K" color={playerColor} />
+                </svg>{" "}
+                {fmtClock(clocksMs[playerColor])}
               </span>
             </div>
           )}
@@ -983,7 +995,9 @@ export function ChessGame({
                   ? "—"
                   : captured.byYou.map((p, i) => (
                       <span key={i} className="ch-cap">
-                        {GLYPHS[p.type]}
+                        <svg viewBox="0 0 100 100" className="ch-cap-piece" aria-hidden="true">
+                          <VectorPiece type={p.type} color={p.color} />
+                        </svg>
                       </span>
                     ))}
               </span>
@@ -995,7 +1009,9 @@ export function ChessGame({
                   ? "—"
                   : captured.byComputer.map((p, i) => (
                       <span key={i} className="ch-cap">
-                        {GLYPHS[p.type]}
+                        <svg viewBox="0 0 100 100" className="ch-cap-piece" aria-hidden="true">
+                          <VectorPiece type={p.type} color={p.color} />
+                        </svg>
                       </span>
                     ))}
               </span>
