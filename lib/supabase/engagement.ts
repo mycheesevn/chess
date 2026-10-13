@@ -1,4 +1,5 @@
 import { createClient } from "./client";
+import { STANDARD_START_FEN } from "@/lib/chess/fen";
 
 export interface CheckinResult {
   streak: number;
@@ -37,7 +38,8 @@ export async function recordGameResult(
   level: number,
   result: "win" | "loss" | "draw",
   plies: number,
-  moves: string = ""
+  moves: string = "",
+  startFen: string = STANDARD_START_FEN
 ): Promise<number> {
   const supabase = createClient();
   const { data, error } = await supabase.rpc("chess_record_game_result", {
@@ -46,6 +48,7 @@ export async function recordGameResult(
     p_result: result,
     p_plies: plies,
     p_moves: moves,
+    p_start_fen: startFen,
   });
   if (error) throw error;
   return data as number;
@@ -58,6 +61,7 @@ export interface ChessGameRow {
   result: string;
   plies: number;
   moves: string;
+  start_fen?: string | null;
   created_at: string;
 }
 
@@ -65,7 +69,7 @@ export async function fetchGameHistory(limit = 100): Promise<ChessGameRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("chess_games")
-    .select("id, player_color, ai_level, result, plies, moves, created_at")
+    .select("id, player_color, ai_level, result, plies, moves, start_fen, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
