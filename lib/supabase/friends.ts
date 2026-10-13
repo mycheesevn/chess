@@ -1,4 +1,5 @@
 import { createClient } from "./client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export interface FriendRow {
   id: string;
@@ -128,4 +129,88 @@ export async function listPendingChallenges(): Promise<Challenge[]> {
         c.challenger?.full_name || c.challenger?.username || "Someone",
     })
   );
+}
+
+export interface IncomingChallenge {
+  id: string;
+  challenger_id: string;
+  room_id: string | null;
+  challenger_name: string;
+}
+
+function displayNameOf(p: {
+  full_name?: string | null;
+  username?: string | null;
+}): string {
+  return p.full_name || p.username || "Someone";
+}
+
+/**
+ * Realtime challenge events for the current user:
+ * - INSERT where I'm the challenged -> incoming challenge popup.
+ * - UPDATE where I'm the challenger and it was declined -> toast.
+ * Requires chess_challenges in the supabase_realtime publication
+ * (migration 002). Without it this silently does nothing — the Friends
+ * view list and push notifications still work as fallback.
+ */
+export function subscribeChallenges(
+  uid: string,
+  onIncoming: (c: IncomingChallenge) => void,
+  onDeclined?: (challengedName: string) => void
+): () => void {
+  const supabase = createClient();
+  const ch: RealtimeChannel = supabase.channel(`challenges:${uid}`);
+  ch.on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "chess_challenges",
+      filter: `challenged_id=eq.${uid}`,
+    },
+    async (payload: { new: Record<string, unknown> }) => {
+      const row = payload.new;
+      if (row.status !== "pending") return;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name, username")
+        .eq("id", row.challenger_id as string)
+        .single();
+      onIncoming({
+        id: String(row.id ?? ""),
+        challenger_id: String(row.challenger_id ?? ""),
+        room_id: (row.room_id as string | null) ?? null,
+        challenger_name: displayNameOf(
+          (prof ?? {}) as { full_name?: string | null; username?: string | null }
+        ),
+      });
+    }
+  );
+  ch.on(
+    "postgres_changes",
+    {
+      event: "UPDATE",
+      schema: "public",
+      table: "chess_challenges",
+      filter: `challenger_id=eq.${uid}`,
+    },
+    async (payload: { new: Record<string, unknown> }) => {
+      const row = payload.new;
+      if (row.status !== "declined" || !onDeclined) return;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name, username")
+        .eq("id", row.challenged_id as string)
+        .single();
+      onDeclined(
+        displayNameOf(
+          (prof ?? {}) as { full_name?: string | null; username?: string | null }
+        )
+      );
+    }
+  );
+  ch.subscribe();
+  return () => {
+    supabase.removeChannel(ch);
+  };
 }

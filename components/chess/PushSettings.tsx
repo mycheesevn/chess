@@ -47,8 +47,18 @@ export function PushSettings({ lang }: { lang: Lang }) {
       setState({ kind: "denied" });
       return;
     }
-    const sub = await currentSubscription();
-    setState({ kind: sub ? "on" : "off" });
+    // currentSubscription() awaits navigator.serviceWorker.ready, which can
+    // hang indefinitely if the SW registration is broken. Timeout after 5s
+    // and treat as "off" so the UI never sticks on Loading.
+    try {
+      const sub = await Promise.race([
+        currentSubscription(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+      setState({ kind: sub ? "on" : "off" });
+    } catch {
+      setState({ kind: "off" });
+    }
   }, [lang]);
 
   useEffect(() => {

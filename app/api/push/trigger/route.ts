@@ -7,6 +7,7 @@ import { sendPushToUser } from "@/lib/push/server";
  * Event-verified push triggers for chess. Server re-checks DB state before sending.
  * kinds:
  *  - { kind: "challenge", challengeId } — notify the challenged player.
+ *  - { kind: "challenge_declined", challengeId } — notify the challenger.
  *  - { kind: "turn", matchId } — notify whoever's turn it now is (room match).
  *  - { kind: "corr", gameId } — notify the opponent in a correspondence game.
  *  - { kind: "corr_end", gameId } — notify the opponent when a corr game finishes.
@@ -33,6 +34,46 @@ function displayName(p: { full_name?: string | null; username?: string | null } 
   return p.full_name || p.username || "A player";
 }
 
+/**
+ * Best-effort inbox write: persist the notification so users can review
+ * missed pushes. Never throws (must not break the push itself).
+ */
+async function recordNotification(
+  sb: ReturnType<typeof service>,
+  n: {
+    user_id: string;
+    kind: string;
+    title: string;
+    body: string;
+    url: string;
+    ref_id?: string;
+  }
+): Promise<void> {
+  try {
+    // De-dupe: don't stack identical unread rows for the same event.
+    let q = sb
+      .from("chess_notifications")
+      .select("id")
+      .eq("user_id", n.user_id)
+      .eq("kind", n.kind)
+      .is("read_at", null)
+      .limit(1);
+    q = n.ref_id ? q.eq("ref_id", n.ref_id) : q.is("ref_id", null);
+    const { data: existing } = await q;
+    if (existing && existing.length > 0) return;
+    await sb.from("chess_notifications").insert({
+      user_id: n.user_id,
+      kind: n.kind,
+      title: n.title,
+      body: n.body,
+      url: n.url,
+      ref_id: n.ref_id ?? null,
+    });
+  } catch {
+    /* inbox is best-effort */
+  }
+}
+
 export async function POST(req: Request) {
   const auth = await needAuth(req);
   if ("error" in auth) return auth.error;
@@ -48,6 +89,9 @@ export async function POST(req: Request) {
   try {
     if (body.kind === "challenge" && body.challengeId) {
       return await onChallenge(uid, body.challengeId);
+    }
+    if (body.kind === "challenge_declined" && body.challengeId) {
+      return await onChallengeDeclined(uid, body.challengeId);
     }
     if (body.kind === "turn" && body.matchId) {
       return await onTurn(uid, body.matchId);
@@ -90,11 +134,61 @@ async function onChallenge(challengerId: string, challengeId: string) {
   const name = displayName(me);
   // Deep-link to the challenge itself (Friends view highlights it for accept/decline).
   const url = `/?challenge=${ch.id}`;
+  const title = "⚔️ Challenge!";
+  const body = `${name} challenged you to a chess game.`;
   const { sent } = await sendPushToUser(ch.challenged_id, {
-    title: "⚔️ Challenge!",
-    body: `${name} challenged you to a chess game.`,
+    title,
+    body,
     url,
     tag: `challenge-${ch.id}`,
+  });
+  await recordNotification(sb, {
+    user_id: ch.challenged_id,
+    kind: "challenge",
+    title,
+    body,
+    url,
+    ref_id: ch.id,
+  });
+  return NextResponse.json({ ok: true, sent });
+}
+
+async function onChallengeDeclined(declinerId: string, challengeId: string) {
+  if (throttled(`challenge_declined:${challengeId}`, 5 * 60 * 1000)) {
+    return NextResponse.json({ ok: true, skipped: "throttled" });
+  }
+  const sb = service();
+  const { data: ch, error } = await sb
+    .from("chess_challenges")
+    .select("id, challenger_id, challenged_id, status")
+    .eq("id", challengeId)
+    .single();
+  if (error || !ch) throw new Error("not_found");
+  // Only the challenged player can report a decline, and only once.
+  if (ch.challenged_id !== declinerId) throw new Error("forbidden");
+  if (ch.status !== "declined") throw new Error("not_declined");
+  const { data: me } = await sb
+    .from("profiles")
+    .select("full_name, username")
+    .eq("id", declinerId)
+    .single();
+  const name = displayName(me);
+  const title = "😞 Challenge declined";
+  const body = `${name} declined your challenge.`;
+  // No deep link: the challenge is over, just open the app.
+  const { sent } = await sendPushToUser(ch.challenger_id, {
+    title,
+    body,
+    url: "/",
+    tag: `challenge-declined-${ch.id}`,
+  });
+  await recordNotification(sb, {
+    user_id: ch.challenger_id,
+    kind: "challenge_declined",
+    title,
+    body,
+    url: "/",
+    ref_id: ch.id,
   });
   return NextResponse.json({ ok: true, sent });
 }
@@ -117,11 +211,21 @@ async function onTurn(moverId: string, matchId: string) {
   if (moverId !== m.white_id && moverId !== m.black_id) throw new Error("forbidden");
 
   const { data: room } = await sb.from("chess_rooms").select("name").eq("id", m.room_id).single();
+  const title = "♟️ Your move!";
+  const body = room?.name ? `Your turn in room ${room.name}.` : "Your turn to move.";
   const { sent } = await sendPushToUser(toMoveId, {
-    title: "♟️ Your move!",
-    body: room?.name ? `Your turn in room ${room.name}.` : "Your turn to move.",
+    title,
+    body,
     url: "/",
     tag: `turn-${m.id}-${plies}`,
+  });
+  await recordNotification(sb, {
+    user_id: toMoveId,
+    kind: "turn",
+    title,
+    body,
+    url: "/",
+    ref_id: m.id,
   });
   return NextResponse.json({ ok: true, sent });
 }
@@ -150,11 +254,21 @@ async function onCorr(moverId: string, gameId: string) {
     .single();
   const name = displayName(me);
   const url = `/?corr=${g.id}`;
+  const pushTitle = "✉️ Correspondence — your move!";
+  const pushBody = `${name} moved. Your turn.`;
   const { sent } = await sendPushToUser(toMoveId, {
-    title: "✉️ Correspondence — your move!",
-    body: `${name} moved. Your turn.`,
+    title: pushTitle,
+    body: pushBody,
     url,
     tag: `corr-${g.id}-${plies}`,
+  });
+  await recordNotification(sb, {
+    user_id: toMoveId,
+    kind: "corr",
+    title: pushTitle,
+    body: pushBody,
+    url,
+    ref_id: g.id,
   });
   return NextResponse.json({ ok: true, sent });
 }
@@ -200,6 +314,14 @@ async function onCorrEnd(finisherId: string, gameId: string) {
     body,
     url,
     tag: `corr-end-${g.id}`,
+  });
+  await recordNotification(sb, {
+    user_id: otherId,
+    kind: "corr_end",
+    title,
+    body,
+    url,
+    ref_id: g.id,
   });
   return NextResponse.json({ ok: true, sent });
 }

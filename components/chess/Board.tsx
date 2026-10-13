@@ -35,6 +35,8 @@ interface BoardProps {
   interactive: boolean;
   boardLabel: string;
   onSquareClick: (x: number, y: number) => void;
+  /** Engine hint: gold pulsing rings on the from/to squares. */
+  hintMove?: Move | null;
 }
 
 function Glyph({
@@ -152,6 +154,7 @@ export function Board({
   interactive,
   boardLabel,
   onSquareClick,
+  hintMove,
 }: BoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -172,8 +175,17 @@ export function Board({
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!interactive || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
-    const sx = ((e.clientX - rect.left) / rect.width) * W;
-    const sy = ((e.clientY - rect.top) / rect.height) * H;
+    // The SVG keeps the viewBox aspect via preserveAspectRatio="xMidYMid meet":
+    // when the container's aspect differs from the board's, the drawing is
+    // letterboxed (centered with empty bands). A naive linear map across the
+    // full element is then off — increasingly toward the edges — and taps land
+    // on a neighbouring square. Convert through the meet transform instead.
+    const scale = Math.min(rect.width / W, rect.height / H);
+    if (scale <= 0) return;
+    const offX = (rect.width - W * scale) / 2;
+    const offY = (rect.height - H * scale) / 2;
+    const sx = (e.clientX - rect.left - offX) / scale;
+    const sy = (e.clientY - rect.top - offY) / scale;
     const dx = Math.floor((sx - MARGIN) / CELL);
     const dy = Math.floor((sy - MARGIN) / CELL);
     if (dx < 0 || dx > 7 || dy < 0 || dy > 7) return;
@@ -359,6 +371,13 @@ export function Board({
       {squares}
       {coords}
       {markers}
+      {/* hint: gold rings on the suggested from/to squares */}
+      {hintMove && (
+        <g className="ch-hint-ring" pointerEvents="none">
+          <circle cx={px(hintMove.fromX)} cy={py(hintMove.fromY)} r={34} fill="none" stroke="#ffd43b" strokeWidth={5} />
+          <circle cx={px(hintMove.toX)} cy={py(hintMove.toY)} r={34} fill="none" stroke="#ffd43b" strokeWidth={5} />
+        </g>
+      )}
       {pieces}
 
       {/* check badge pops above the king */}

@@ -32,7 +32,15 @@ export function pushPermission(): NotificationPermission | "unsupported" {
 
 async function swRegistration(): Promise<ServiceWorkerRegistration> {
   if (!("serviceWorker" in navigator)) throw new Error("no-sw");
-  return navigator.serviceWorker.ready;
+  // navigator.serviceWorker.ready can hang indefinitely if the SW
+  // registration is broken; timeout after 5s so push settings never
+  // stick on "Loading" and subscribe/unsubscribe never hang.
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("sw-timeout")), 5000)
+    ),
+  ]);
 }
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
@@ -167,6 +175,7 @@ export async function fetchPushStatus(
 export async function notifyPushTrigger(
   payload:
     | { kind: "challenge"; challengeId: string }
+    | { kind: "challenge_declined"; challengeId: string }
     | { kind: "turn"; matchId: string }
     | { kind: "corr"; gameId: string }
     | { kind: "corr_end"; gameId: string }
