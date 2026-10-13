@@ -1,173 +1,95 @@
+// Piece artwork in a 100x100 viewBox (ground line y=93), traced from the
+// reference set the user supplied on 2026-10-13 (bold-outline two-tone
+// Staunton: white pieces = light fill with dark outline and dark marks;
+// black pieces = dark fill with light marks). Silhouettes were
+// machine-traced from the source sprite and smoothed; details (base
+// stripes, crosses, eye, nostril, mane band) were measured from the
+// sprite's own detail components.
+//
+// Layers:
+// - body:    filled silhouette subpaths (fill + outline stroke)
+// - details: stroked inner lines (base stripes, collar grooves)
+// - dots:    filled marks shared by both colors (crosses, eye, nostril)
+// - onDark:  filled marks rendered only on black pieces (knight mane band)
+
 import type { PieceType } from "./types";
 
-/**
- * Flat vector piece art traced from the user's reference set: rounded dome
- * plinth on every major piece, a bell-bodied pawn, a flame mitre with a
- * true cut-out slit for the bishop, five balled points for the queen, twin
- * petal lines for the king, and a long elegant left-facing knight. Every
- * shape is a path string in a 100×100 local space, ground line at y = 93.
- * Layers per piece:
- * - body: filled silhouette paths (main fill + outline stroke)
- * - shade: soft facet on the right side of the piece (fill only, no stroke)
- * - details: stroke-only inner lines (petals, crown grooves, mouth…)
- * - dots: small filled accents (the knight's eye)
- * - cut: a shape knocked OUT of the body via an SVG mask (bishop slit —
- *   the square shows through, exactly like the reference)
- * Colors are applied by the renderer per side, so one art set serves
- * both white and black pieces.
- */
 export interface PieceArt {
   body: string[];
-  shade: string[];
   details: string[];
   dots: string[];
-  cut?: string;
+  onDark?: string[];
 }
-
-/** A circle drawn as a path so it can join the stroked body layer. */
-function circ(cx: number, cy: number, r: number): string {
-  return `M${cx - r} ${cy} a${r} ${r} 0 1 0 ${2 * r} 0 a${r} ${r} 0 1 0 ${-2 * r} 0`;
-}
-
-// Shared dome plinth: flat bottom on the ground line, gently domed top
-// whose seam stays visible in front of the piece body — the base reads as
-// a separate cap, exactly like the reference set.
-const PLINTH =
-  "M13 93 L87 93 C89.5 93 90.5 90.5 90 86.5 C89.5 79.5 85 74.8 77 73.8 " +
-  "C60 70.8 40 70.8 23 73.8 C15 74.8 10.5 79.5 10 86.5 C9.5 90.5 10.5 93 13 93 Z";
-const PLINTH_SHADE =
-  "M77 73.8 C85 74.8 89.5 79.5 90 86.5 C90.5 90.5 89.5 93 87 93 L71 93 " +
-  "C75.5 87 77.5 80.5 77 73.8 Z";
-const PLINTH_GROOVE = "M13.5 85.8 C35 83 65 83 86.5 85.8";
 
 export const PIECE_ART: Record<PieceType, PieceArt> = {
-  P: {
-    // Ball head over a pinched neck, small collar, then a smooth bell that
-    // IS the base (the reference pawn has no separate plinth).
-    body: [
-      circ(50, 28, 13.5),
-      "M42 42.5 C45 45.5 47.5 46.8 50 46.8 C52.5 46.8 55 45.5 58 42.5 " +
-        "C60.5 45.5 62 48.8 62 52 L61.2 55.5 C55 62 64 70 69 78 " +
-        "C73 84.5 75.5 89 76 93 L24 93 C24.5 89 27 84.5 31 78 " +
-        "C36 70 45 62 38.8 55.5 L38 52 C38 48.8 39.5 45.5 42 42.5 Z",
-    ],
-    shade: ["M57 50 C64 58 70.5 70 74.5 87 L65 88.5 C61.5 74 55.5 61 49.5 54.5 Z"],
-    details: ["M39 55.5 C45 58.2 55 58.2 61 55.5"],
-    dots: [],
-  },
-
-  R: {
-    // Three-merlon battlement, a tower that tapers as it falls, dome plinth.
-    body: [
-      "M23 14 L37 14 L37 22.5 L45 22.5 L45 14 L55 14 L55 22.5 L63 22.5 L63 14 " +
-        "L77 14 L76.2 29 C76 32.3 74.6 33.8 72 34.3 C71.2 47.5 69.8 60.5 68.2 73.5 " +
-        "L31.8 73.5 C30.2 60.5 28.8 47.5 28 34.3 C25.4 33.8 24 32.3 23.8 29 Z",
-      PLINTH,
-    ],
-    shade: [
-      "M72 34.3 C71.2 47.5 69.8 60.5 68.2 73.5 L59.5 73.5 " +
-        "C61 60 62 47 62.8 34.8 Z",
-      PLINTH_SHADE,
-    ],
-    details: ["M26.5 30.5 C42 32.8 58 32.8 73.5 30.5", PLINTH_GROOVE],
-    dots: [],
-  },
-
-  N: {
-    // Long-necked knight facing left: sloped forehead to a rounded muzzle,
-    // one smooth convex mane sweeping down to the plinth.
-    body: [
-      "M57.2 7.4 C60.4 13.6 64.8 19.8 69.3 27 C77.8 40.2 84.2 56 84.6 73.5 " +
-        "L50 73.5 C43 66 37.5 61 35 57 C28 52.5 20.5 50.8 15.5 47.8 " +
-        "C12.3 45.9 11 44.3 11.3 42 C11.6 39.6 13.8 37.2 17.8 34.4 " +
-        "C26 28.6 33 22.8 41 16.8 C46.5 12.8 52 9.6 57.2 7.4 Z",
-      PLINTH,
-    ],
-    shade: [
-      "M69.3 27 C77.8 40.2 84.2 56 84.6 73.5 L74.5 73.5 " +
-        "C73.8 57 71 41.5 64.8 29 Z",
-      PLINTH_SHADE,
-    ],
-    details: [
-      // Nostril + mouth line.
-      "M17.8 40.8 C19.3 39.9 20.8 39.7 22.3 40.2",
-      "M20.5 47.8 C23.5 49.8 26.5 50.6 29.5 50.2",
-      PLINTH_GROOVE,
-    ],
-    dots: [circ(39.5, 24.5, 2.7)],
-  },
-
-  B: {
-    // Flame/onion mitre with a knob tip; the slit is a true cut-out (mask).
-    body: [
-      circ(52, 9.5, 4.6),
-      "M52 13.5 C47 20 40.5 26 35 34 C28.5 43 26.2 52 29.7 59.2 " +
-        "C32.2 64.6 36 67.2 40 68.7 L35.8 68.7 C33.2 71.2 33.2 74 35.8 76.3 " +
-        "L64.2 76.3 C66.8 74 66.8 71.2 64.2 68.7 L60 68.7 C65 66.8 69.6 62.6 71.6 56.6 " +
-        "C74.6 47.2 72.2 36.2 65.7 26.7 C61.7 20.8 56.7 15.8 52 13.5 Z",
-      PLINTH,
-    ],
-    shade: [
-      "M64 25 C71 34.5 74.3 46.8 71.6 56.6 C69.6 62.6 65 66.8 60 68.7 L55.5 68.7 " +
-        "C61.5 55 63.8 38.5 64 25 Z",
-      PLINTH_SHADE,
-    ],
-    details: [PLINTH_GROOVE],
-    dots: [],
-    cut:
-      "M61.5 20.5 C57.8 30 55.3 39.8 56.2 49.5 C56.6 53.4 58.3 56 60.2 56.8 " +
-      "C62.2 49.8 62.8 38.5 62.4 28.6 C62.2 25.4 62 22.7 61.5 20.5 Z",
-  },
-
-  Q: {
-    // Five spikes tipped with balls fanning from a wide crown, dome plinth.
-    body: [
-      circ(15, 30, 6.3),
-      circ(31, 18.5, 6.3),
-      circ(50, 12, 6.8),
-      circ(69, 18.5, 6.3),
-      circ(85, 30, 6.3),
-      "M12.5 38 C19 32.5 24 33.5 29 27 C35.5 31 41.5 24.5 45.5 19.8 " +
-        "C47.5 19.2 52.5 19.2 54.5 19.8 C58.5 24.5 64.5 31 71 27 " +
-        "C76 33.5 81 32.5 87.5 38 C83 50 78.3 60.8 74.8 71 L25.2 71 " +
-        "C21.7 60.8 17 50 12.5 38 Z",
-      PLINTH,
-    ],
-    shade: [
-      "M69.2 27.5 C74.5 34.5 81 32.5 87.5 38 C83 50 78.3 60.8 74.8 71 L64 71 " +
-        "C68 58.5 69.8 42.5 69.2 27.5 Z",
-      PLINTH_SHADE,
-    ],
-    details: [
-      "M40.5 34.5 C41.3 46 42 58 42.4 70",
-      "M59.5 34.5 C58.7 46 58 58 57.6 70",
-      PLINTH_GROOVE,
-    ],
-    dots: [],
-  },
-
   K: {
-    // Cross-topped crown: two broad lobes with twin petal lines inside.
     body: [
-      "M46.5 20.5 L46.5 15.8 L40 15.8 L40 8.8 L46.5 8.8 L46.5 3.2 L53.5 3.2 " +
-        "L53.5 8.8 L60 8.8 L60 15.8 L53.5 15.8 L53.5 20.5 Z",
-      "M50 21 C43 24.5 33 26.5 25.5 31 C15.5 36.3 10.8 45 12.6 54 " +
-        "C14.2 63 20.8 69.2 28.5 71.2 L71.5 71.2 C79.2 69.2 85.8 63 87.4 54 " +
-        "C89.2 45 84.5 36.3 74.5 31 C67 26.5 57 24.5 50 21 Z",
-      PLINTH,
-    ],
-    shade: [
-      "M74.5 31 C84.5 36.3 89.2 45 87.4 54 C85.8 63 79.2 69.2 71.5 71.2 " +
-        "L62 71.2 C68.5 59.5 72.8 45.8 74.5 31 Z",
-      PLINTH_SHADE,
+      "M50.7 7.5 L49.5 7.5 L48.6 8.2 L48.1 12.3 L43.6 12.3 L42.3 13.5 L42.3 14.7 L43.3 15.8 L48.3 15.9 L48.3 22.3 L45.9 23.3 L44.3 24.5 L41.9 27.6 L40.4 31.5 L40.4 37.4 L33.9 33.6 L28.9 32.1 L22.7 31.7 L19.3 32.4 L14.8 34.6 L11.7 37.6 L8.8 42.7 L7.6 47.7 L8.1 52.7 L10.7 58.2 L15.3 63.3 L21.5 67.8 L21.7 85.8 L26.1 88.5 L31.5 90.6 L37.8 92.1 L45.0 93.0 L52.7 93.0 L61.7 91.8 L68.7 89.7 L75.4 86.5 L76.3 85.4 L76.3 69.0 L82.8 64.5 L87.6 59.9 L91.0 54.5 L92.4 49.6 L92.2 45.6 L90.3 40.6 L86.0 35.8 L81.4 33.1 L75.7 31.7 L70.4 31.9 L64.9 33.4 L59.8 36.0 L59.8 31.5 L58.2 27.6 L55.7 24.3 L51.9 22.3 L51.9 15.9 L56.9 15.8 L57.9 14.7 L57.9 13.5 L56.5 12.3 L52.1 12.3 L51.9 9.1 Z",
     ],
     details: [
-      "M39.5 33.5 C34 34 30.8 38.6 31.6 44.4 C32.4 50.6 37.4 56.4 42.8 58 " +
-        "C46.8 59.1 49.3 55.9 48.9 50 C48.5 43.4 45.6 36.2 39.5 33.5 Z",
-      "M60.5 33.5 C66 34 69.2 38.6 68.4 44.4 C67.6 50.6 62.6 56.4 57.2 58 " +
-        "C53.2 59.1 50.7 55.9 51.1 50 C51.5 43.4 54.4 36.2 60.5 33.5 Z",
-      PLINTH_GROOVE,
+      "M8.5 47.6 Q50 50.6 91.5 47.6",
+      "M21.5 70.5 Q50 75.5 78.5 70.5",
+      "M21.5 78.5 Q50 83.5 78.5 78.5",
     ],
+    dots: [
+      "M48.2 22 L48.2 15.9 L42.3 15.9 L42.3 12.3 L48.2 12.3 L48.2 7.5 L51.9 7.5 L51.9 12.3 L57.8 12.3 L57.8 15.9 L51.9 15.9 L51.9 22 Z",
+    ],
+  },
+  Q: {
+    body: [
+      "M4.6 20.4 L3.1 24.0 L3.2 26.2 L4.1 28.3 L5.6 30.0 L7.5 31.0 L10.8 31.5 L15.8 61.9 L16.8 63.8 L20.7 67.9 L23.5 72.4 L22.8 76.2 L20.0 79.3 L19.0 82.5 L17.6 85.1 L17.8 87.5 L19.7 90.1 L22.3 91.3 L31.2 92.3 L44.8 93.0 L55.2 93.0 L75.3 91.6 L78.6 91.1 L80.5 89.6 L81.3 87.9 L81.3 85.3 L80.0 82.7 L79.6 79.3 L77.2 76.2 L76.5 72.4 L79.3 67.9 L83.6 63.3 L84.4 61.4 L89.2 31.5 L92.5 31.0 L93.9 30.3 L95.6 28.8 L96.6 26.9 L96.8 23.1 L95.9 21.1 L94.5 19.5 L91.6 18.2 L88.9 18.2 L86.5 19.2 L84.8 20.9 L83.7 23.3 L83.7 26.1 L84.4 27.9 L85.8 29.7 L72.7 49.9 L72.6 23.8 L75.7 21.9 L77.0 19.7 L77.4 18.3 L77.2 15.6 L76.3 13.7 L75.1 12.3 L73.1 11.1 L69.7 10.8 L67.6 11.5 L65.5 13.2 L64.7 14.6 L64.2 16.3 L64.2 18.5 L64.7 20.2 L65.5 21.6 L68.3 23.8 L58.0 48.9 L52.1 20.7 L52.3 19.9 L53.9 19.2 L55.4 17.6 L56.6 14.7 L56.6 12.7 L56.1 10.9 L53.5 8.0 L51.3 7.2 L47.5 7.5 L44.8 9.6 L43.6 12.0 L43.4 14.7 L43.7 16.1 L46.1 19.2 L47.9 20.0 L42.0 48.7 L31.7 22.6 L34.3 20.6 L35.8 17.3 L35.7 14.2 L33.4 10.9 L30.5 9.6 L26.9 9.9 L24.2 11.8 L22.6 15.2 L22.6 17.1 L23.5 19.5 L25.4 21.6 L27.4 22.6 L27.3 49.9 L14.2 29.7 L15.6 27.9 L16.3 26.1 L16.3 23.3 L15.2 20.9 L13.5 19.2 L11.1 18.2 L7.2 18.5 Z",
+    ],
+    details: [
+      "M21 57.5 Q50 62.5 79 57.5",
+      "M24 66.5 Q50 71.5 76 66.5",
+      "M22 77.5 Q50 82.5 78 77.5",
+      "M21 84.5 Q50 89.5 79 84.5",
+    ],
+    dots: [],
+  },
+  B: {
+    body: [
+      "M46.1 9.1 L43.7 11.1 L42.2 14.7 L42.2 17.3 L42.7 19.0 L45.1 22.1 L38.4 26.1 L32.1 32.1 L28.5 38.1 L26.7 44.9 L26.9 49.4 L27.9 53.2 L30.0 56.8 L32.4 59.2 L34.3 60.4 L32.1 63.0 L30.3 66.6 L29.5 70.3 L29.5 73.3 L30.0 75.1 L31.4 76.7 L34.5 78.4 L42.5 80.5 L37.9 81.3 L22.6 81.7 L15.8 82.7 L12.5 84.1 L10.4 85.6 L8.0 88.5 L8.0 89.9 L9.9 92.0 L12.8 93.0 L15.2 92.8 L20.7 91.5 L41.0 91.5 L46.1 90.9 L49.7 89.9 L53.9 90.9 L59.0 91.5 L79.3 91.5 L86.0 93.0 L88.2 92.8 L90.1 92.0 L92.0 89.9 L92.0 88.5 L88.5 85.3 L84.2 82.9 L79.4 81.8 L64.8 81.5 L57.5 80.5 L65.5 78.4 L68.6 76.7 L70.0 75.1 L70.5 73.3 L70.5 70.3 L69.7 66.6 L67.9 63.0 L65.7 60.4 L67.6 59.2 L70.0 56.8 L72.1 53.2 L73.3 47.9 L73.1 43.6 L71.5 38.1 L69.8 34.8 L67.1 31.0 L62.3 26.6 L54.9 22.1 L56.8 20.0 L57.8 17.3 L57.6 13.9 L56.1 10.9 L53.9 9.1 L51.5 8.2 L48.5 8.2 Z",
+    ],
+    details: [
+      "M36 58.5 Q50 61.5 64 58.5",
+      "M32 67.5 Q50 71.5 68 67.5",
+    ],
+    dots: [
+      "M47.2 48.2 L47.2 43.2 L42.2 43.2 L42.2 37.6 L47.2 37.6 L47.2 32.6 L52.8 32.6 L52.8 37.6 L57.8 37.6 L57.8 43.2 L52.8 43.2 L52.8 48.2 Z",
+    ],
+  },
+  N: {
+    body: [
+      "M28.3 12.8 L27.4 14.2 L27.4 18.8 L28.6 22.1 L28.3 23.5 L26.6 26.4 L23.8 29.7 L19.5 37.0 L11.8 51.6 L9.2 58.5 L9.4 63.5 L9.9 65.7 L11.5 68.6 L12.7 69.8 L15.1 71.0 L20.6 71.0 L21.4 72.6 L23.0 73.6 L25.0 73.6 L26.7 73.1 L29.5 70.7 L31.9 67.4 L34.8 64.5 L44.1 57.8 L51.1 51.3 L51.1 53.7 L50.3 58.0 L47.7 64.0 L44.4 68.3 L35.8 77.0 L32.9 81.8 L31.4 87.2 L31.4 92.3 L32.2 93.0 L89.7 93.0 L90.8 91.8 L90.8 77.2 L90.1 67.4 L88.5 57.0 L86.8 49.9 L84.2 42.7 L81.7 37.6 L78.4 32.7 L74.5 28.5 L68.3 24.0 L61.2 20.9 L56.8 19.7 L51.8 19.0 L50.9 14.4 L49.7 12.3 L48.7 11.6 L47.0 11.5 L45.1 12.7 L42.4 15.4 L40.1 18.8 L37.7 18.8 L34.6 14.7 L32.4 12.8 L30.3 12.1 Z",
+    ],
+    details: [],
+    dots: [
+      "M31.6 29.2 C34.8 29.2 36.9 31.4 36.7 34.3 C36.5 37.3 34.6 39.1 31.9 38.9 C29.2 38.7 27.5 36.8 27.7 33.8 C27.9 31 29.4 29.2 31.6 29.2 Z",
+      "M18.2 55.2 C20 55.2 21.3 56.6 21.3 58.3 C21.3 60 20 61.4 18.2 61.4 C16.4 61.4 15.1 60 15.1 58.3 C15.1 56.6 16.4 55.2 18.2 55.2 Z",
+    ],
+    onDark: [
+      "M87.5 92.6 L82.3 92.5 C82.8 74 82.2 60 79.9 52.7 C77.3 44.5 73.8 37.8 68.1 31.6 C64.5 27.7 59.5 25.8 55.1 24.9 L56.3 21.5 C59.5 22 61.8 22.7 64 23.6 C70.5 26.3 77 34.5 81.6 42.7 C86 50.5 87.6 63 87.9 74.3 C88.1 82 88 87.5 87.9 89.2 C87.8 90.5 87.6 91.6 87.5 92.6 Z",
+    ],
+  },
+  R: {
+    body: [
+      "M20.9 16.6 L20.2 17.5 L20.2 30.9 L27.4 38.2 L27.4 67.8 L25.0 71.9 L24.5 72.4 L23.3 72.7 L22.6 73.8 L22.6 82.0 L16.8 82.2 L15.4 83.2 L15.2 91.5 L15.6 92.3 L16.4 93.0 L83.9 92.8 L84.8 91.5 L84.6 83.2 L83.2 82.2 L77.4 82.0 L77.4 73.8 L76.7 72.7 L75.8 72.6 L75.0 71.9 L72.6 67.8 L72.6 38.2 L79.8 30.9 L79.6 17.1 L78.2 16.3 L68.1 16.3 L67.3 16.6 L66.6 17.6 L66.4 21.2 L58.0 21.2 L57.8 17.5 L56.8 16.4 L43.7 16.3 L42.9 16.6 L42.2 17.5 L42.0 21.2 L33.6 21.2 L33.4 17.6 L32.4 16.4 L21.8 16.3 Z",
+    ],
+    details: [
+      "M22 30 L78 30",
+      "M29 36.5 L71 36.5",
+      "M29 68 L71 68",
+      "M26 73 L74 73",
+      "M24 83 L76 83",
+    ],
+    dots: [],
+  },
+  P: {
+    body: [
+      "M45.6 15.9 L42.7 17.6 L40.5 20.0 L39.3 22.3 L38.4 27.3 L39.6 31.9 L35.7 35.8 L33.8 39.1 L32.7 42.2 L32.4 48.2 L32.9 50.8 L34.6 54.9 L36.9 57.8 L33.8 59.9 L30.3 63.0 L27.8 66.0 L24.5 71.4 L22.1 77.4 L20.7 83.2 L20.2 87.5 L20.2 93.0 L79.8 93.0 L79.8 88.2 L79.1 82.5 L77.9 77.6 L76.2 72.9 L73.6 68.1 L70.7 64.2 L67.3 60.7 L63.1 57.8 L65.0 55.4 L66.7 51.8 L67.6 47.7 L67.6 44.6 L67.1 41.7 L65.2 37.2 L63.5 34.8 L60.2 31.9 L61.4 28.5 L61.4 24.9 L60.6 21.9 L58.8 19.2 L57.3 17.6 L54.4 15.9 L50.4 15.1 Z",
+    ],
+    details: [],
     dots: [],
   },
 };

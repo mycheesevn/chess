@@ -1,33 +1,31 @@
-import { useId } from "react";
 import { PIECE_ART } from "@/lib/chess/pieceArt";
 import type { Color, PieceType } from "@/lib/chess/types";
 
 /**
- * Flat vector piece (the "green" board theme's piece set): Staunton shapes
- * traced from the user's reference set, rendered from PIECE_ART path data
- * in a 100×100 space. Layers: body (fill + outline), shade (soft right
- * facet), details (thin inner lines), dots, and an optional mask cut-out
- * (the bishop's slit shows the square beneath). White pieces are
- * near-white with a soft dark-gray outline; black pieces are neutral
- * charcoal with a lighter shade facet and details.
+ * Flat vector piece (the "green" board theme's piece set): bold-outline
+ * two-tone Staunton shapes traced from the user's reference set, rendered
+ * from PIECE_ART path data in a 100×100 space. Layers: body (fill +
+ * outline), details (thin inner lines), dots (filled marks shared by
+ * both colors), onDark (filled marks only black pieces carry — the
+ * knight's mane band). White pieces are near-white with a near-black
+ * outline; black pieces are deep charcoal (the self-colored stroke grows
+ * the traced interior silhouette to full size) with light marks.
  */
 const PALETTES: Record<
   Color,
-  { fill: string; stroke: string; shade: string; detail: string; dot: string }
+  { fill: string; stroke: string; detail: string; dot: string }
 > = {
   white: {
-    fill: "#FBFBF8",
-    stroke: "#3D3D40",
-    shade: "#DCDCD4",
-    detail: "#7C7C76",
-    dot: "#3D3D40",
+    fill: "#FCFCFA",
+    stroke: "#191919",
+    detail: "#191919",
+    dot: "#191919",
   },
   black: {
-    fill: "#4B4B4E",
-    stroke: "#16161A",
-    shade: "#67676D",
-    detail: "#A3A3A9",
-    dot: "#D8D8DC",
+    fill: "#26262A",
+    stroke: "#26262A",
+    detail: "#F2F2EE",
+    dot: "#F2F2EE",
   },
 };
 
@@ -40,49 +38,37 @@ export function VectorPiece({
 }) {
   const c = PALETTES[color];
   const art = PIECE_ART[type];
-  const maskId = useId();
   return (
-    <>
-      {art.cut && (
-        <mask id={maskId} maskUnits="userSpaceOnUse">
-          <rect x="0" y="0" width="100" height="100" fill="white" />
-          <path d={art.cut} fill="black" />
-        </mask>
-      )}
-      <g mask={art.cut ? `url(#${maskId})` : undefined}>
-        <g
-          fill={c.fill}
-          stroke={c.stroke}
-          strokeWidth={3}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        >
-          {art.body.map((d, i) => (
-            <path key={i} d={d} />
-          ))}
-        </g>
-        <g fill={c.shade}>
-          {art.shade.map((d, i) => (
-            <path key={i} d={d} />
-          ))}
-        </g>
-        <g
-          fill="none"
-          stroke={c.detail}
-          strokeWidth={1.9}
-          strokeLinecap="round"
-        >
-          {art.details.map((d, i) => (
-            <path key={i} d={d} />
-          ))}
-        </g>
-        <g fill={c.dot}>
-          {art.dots.map((d, i) => (
-            <path key={i} d={d} />
-          ))}
-        </g>
+    <g>
+      <g
+        fill={c.fill}
+        stroke={c.stroke}
+        strokeWidth={2.6}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        {art.body.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
       </g>
-    </>
+      <g
+        fill="none"
+        stroke={c.detail}
+        strokeWidth={2.1}
+        strokeLinecap="round"
+      >
+        {art.details.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>
+      <g fill={c.dot}>
+        {art.dots.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+        {color === "black" &&
+          art.onDark?.map((d, i) => <path key={`d${i}`} d={d} />)}
+      </g>
+    </g>
   );
 }
 
