@@ -7,6 +7,8 @@ import {
   Move,
   Piece,
 } from "@/lib/chess/types";
+import { useBoardTheme, type BoardTheme } from "@/lib/chess/boardTheme";
+import { VectorPieceAt } from "./Pieces";
 
 const CELL = 76;
 const MARGIN = 58;
@@ -84,13 +86,45 @@ function Glyph({
   );
 }
 
+/** Renders a piece in the active board theme's style: gradient glyphs on
+ *  the wood theme, flat vector pieces on the green theme. */
+function PieceShape({
+  piece,
+  x,
+  y,
+  size,
+  theme,
+}: {
+  piece: Piece;
+  x: number;
+  y: number;
+  size: number;
+  theme: BoardTheme;
+}) {
+  if (theme === "green") {
+    return (
+      <g filter="url(#pieceShadowSoft)">
+        <VectorPieceAt
+          type={piece.type}
+          color={piece.color}
+          x={x}
+          y={y}
+          size={size}
+        />
+      </g>
+    );
+  }
+  return <Glyph piece={piece} x={x} y={y} size={size} />;
+}
+
 /** Clash burst + flying captured piece, played when the mover arrives. */
-function Clash({ x, y, captured, fromX, fromY }: {
+function Clash({ x, y, captured, fromX, fromY, theme }: {
   x: number;
   y: number;
   captured: Piece;
   fromX: number;
   fromY: number;
+  theme: BoardTheme;
 }) {
   const spikes = [];
   for (let i = 0; i < 8; i++) {
@@ -134,7 +168,7 @@ function Clash({ x, y, captured, fromX, fromY }: {
         <animateTransform attributeName="transform" type="translate" values={`0 0;${dx} ${dy}`} dur="0.62s" begin="0.34s" fill="freeze" />
         <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="170 0 0" dur="0.62s" begin="0.34s" fill="freeze" additive="sum" />
         <g transform={`translate(${x} ${y})`}>
-          <Glyph piece={captured} x={0} y={0} size={52} />
+          <PieceShape piece={captured} x={0} y={0} size={theme === "green" ? 62 : 52} theme={theme} />
         </g>
       </g>
     </g>
@@ -157,6 +191,8 @@ export function Board({
   hintMove,
 }: BoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const theme = useBoardTheme();
+  const green = theme === "green";
 
   const px = (x: number) => MARGIN + (flipped ? 7 - x : x) * CELL + CELL / 2;
   const py = (y: number) => MARGIN + (flipped ? 7 - y : y) * CELL + CELL / 2;
@@ -208,7 +244,15 @@ export function Board({
             y={MARGIN + y * CELL}
             width={CELL}
             height={CELL}
-            fill={light ? "url(#sqLight)" : "url(#sqDark)"}
+            fill={
+              light
+                ? green
+                  ? "#EEEED2"
+                  : "url(#sqLight)"
+                : green
+                  ? "#769656"
+                  : "url(#sqDark)"
+            }
           />
           {isLast && (
             <rect
@@ -249,7 +293,7 @@ export function Board({
         textAnchor="middle"
         fontSize={19}
         fontWeight={700}
-        fill="#e8d5ae"
+        fill={green ? "#67755a" : "#e8d5ae"}
         opacity={0.85}
       >
         {FILES[f]}
@@ -265,7 +309,7 @@ export function Board({
         dominantBaseline="central"
         fontSize={19}
         fontWeight={700}
-        fill="#e8d5ae"
+        fill={green ? "#67755a" : "#e8d5ae"}
         opacity={0.85}
       >
         {r}
@@ -282,7 +326,7 @@ export function Board({
       if (fight && fight.move.toX === x && fight.move.toY === y) continue;
       pieces.push(
         <g key={`${x}-${y}`}>
-          <Glyph piece={p} x={px(x)} y={py(y)} size={54} />
+          <PieceShape piece={p} x={px(x)} y={py(y)} size={green ? 70 : 54} theme={theme} />
         </g>
       );
     }
@@ -357,15 +401,18 @@ export function Board({
         <filter id="pieceShadow" x="-40%" y="-40%" width="180%" height="180%">
           <feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity="0.5" />
         </filter>
+        <filter id="pieceShadowSoft" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.3" />
+        </filter>
         <filter id="boardShadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="16" stdDeviation="20" floodOpacity="0.55" />
         </filter>
       </defs>
 
       <g filter="url(#boardShadow)">
-        <rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill="url(#frameEdge)" />
-        <rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill="none" stroke="#3d2410" strokeWidth={2} />
-        <rect x={MARGIN - 8} y={MARGIN - 8} width={8 * CELL + 16} height={8 * CELL + 16} rx={6} fill="none" stroke="#d9b06a" strokeWidth={2} opacity={0.5} />
+        <rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill={green ? "#EEF0E2" : "url(#frameEdge)"} />
+        <rect x={4} y={4} width={W - 8} height={H - 8} rx={16} fill="none" stroke={green ? "#B7BDA6" : "#3d2410"} strokeWidth={2} />
+        <rect x={MARGIN - 8} y={MARGIN - 8} width={8 * CELL + 16} height={8 * CELL + 16} rx={6} fill="none" stroke={green ? "#769656" : "#d9b06a"} strokeWidth={2} opacity={0.5} />
       </g>
 
       {squares}
@@ -406,7 +453,7 @@ export function Board({
               fill="freeze"
             />
             <g transform={`translate(${px(fight.move.toX)} ${py(fight.move.toY)})`}>
-              <Glyph piece={fight.piece} x={0} y={0} size={54} />
+              <PieceShape piece={fight.piece} x={0} y={0} size={green ? 70 : 54} theme={theme} />
             </g>
           </g>
           {fight.captured && (
@@ -416,6 +463,7 @@ export function Board({
               captured={fight.captured}
               fromX={px(fight.move.fromX)}
               fromY={py(fight.move.fromY)}
+              theme={theme}
             />
           )}
         </g>
