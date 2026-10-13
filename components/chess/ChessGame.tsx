@@ -4,6 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Board, type FightAnim } from "./Board";
 import { GameOverPanel } from "./GameOverPanel";
 import { EvalBar } from "./EvalBar";
+import { burstConfetti } from "@/lib/chess/confetti";
+import {
+  playCapture,
+  playCheck,
+  playCheckmateFanfare,
+  playHint,
+  playMove,
+  playSadTrombone,
+  playSelect,
+} from "@/lib/chess/sound";
+import { getBigCheckBanner } from "@/lib/chess/checkBanner";
 import {
   analyzePosition,
   findBestMove,
@@ -262,6 +273,8 @@ export function ChessGame({
   const [aiStats, setAiStats] = useState<SearchStats | null>(null);
   const [fight, setFight] = useState<FightAnim | null>(null);
   const [shakeId, setShakeId] = useState(0);
+  // Big "CHECK!" banner overlay key (user setting — off by default).
+  const [checkBannerKey, setCheckBannerKey] = useState(0);
   const reportedEnd = useRef<string | number>(0);
   // Hint.
   const [hintMove, setHintMove] = useState<Move | null>(null);
@@ -345,6 +358,16 @@ export function ChessGame({
           : "loss"
         : "draw";
     onGameEnd(result, playerColor, level, state.log.length, state.uciLog.join(" "));
+    // Party popper + fanfare when the player wins by checkmate (skill:
+    // excitement.md). Sad trombone when the computer mates the player.
+    if (go.kind === "checkmate") {
+      if (go.winner === playerColor) {
+        burstConfetti();
+        playCheckmateFanfare();
+      } else {
+        playSadTrombone();
+      }
+    }
   }, [state.gameOver, state.log.length, state.uciLog, onGameEnd, playerColor, level]);
 
   const commitMove = useCallback(
@@ -441,6 +464,14 @@ export function ChessGame({
         () => setFight(null),
         captured ? 1050 : 620
       );
+
+      // Move/capture/check sounds + the optional big "CHECK!" banner.
+      if (captured) playCapture();
+      else playMove();
+      if (nextCheck && !status.over) {
+        playCheck();
+        if (getBigCheckBanner()) setCheckBannerKey((k) => k + 1);
+      }
     },
     [lang, level, playerColor, tcMs, clearHint]
   );
@@ -531,6 +562,7 @@ export function ChessGame({
         );
         if (bestMove && stateRef.current.turn === playerColor) {
           setHintMove(bestMove);
+          playHint();
           const san = toSAN(
             snap.board,
             bestMove,
@@ -590,10 +622,12 @@ export function ChessGame({
         return;
       }
       const piece = state.board[y][x];
+      const own = piece && piece.color === playerColor;
       setState((prev) => ({
         ...prev,
-        selected: piece && piece.color === playerColor ? { x, y } : null,
+        selected: own ? { x, y } : null,
       }));
+      if (own) playSelect();
     },
     [thinking, fight, state.gameOver, state.turn, state.board, state.pendingPromotion, playerColor, targets, commitMove]
   );
@@ -848,6 +882,15 @@ export function ChessGame({
                   <span className="ch-mate-crown">♔</span>
                   <span>{s.checkmateBadge}</span>
                 </div>
+              </div>
+            )}
+            {checkBannerKey > 0 && !state.gameOver && (
+              <div
+                key={checkBannerKey}
+                className="ch-check-banner"
+                onAnimationEnd={() => setCheckBannerKey(0)}
+              >
+                <span>⚔️ {s.checkBadge}</span>
               </div>
             )}
             {state.gameOver && !fight && (

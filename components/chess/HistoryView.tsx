@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Board, type FightAnim } from "./Board";
 import { Pagination, usePagination } from "./Pagination";
+import { burstConfetti } from "@/lib/chess/confetti";
 import { useAuth } from "./AuthProvider";
 import { fetchGameHistory, type ChessGameRow } from "@/lib/supabase/engagement";
 import {
@@ -115,6 +116,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
     if (celebratedRef.current === replay.id) return;
     celebratedRef.current = replay.id;
     setShakeKey((k) => k + 1);
+    burstConfetti();
   }, [replay, endedInCheckmate, ply]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Glide animation for manual navigation: synthesize the Board's fight
@@ -165,20 +167,20 @@ export function HistoryView({ lang }: { lang: Lang }) {
 
   if (!user) {
     return (
-      <div className="ch-view">
-        <p>{lang === "vi" ? "Đăng nhập để xem lịch sử." : "Sign in to view history."}</p>
+      <div className="ch-scroll-area">
+        <div className="ch-view">
+          <p>{lang === "vi" ? "Đăng nhập để xem lịch sử." : "Sign in to view history."}</p>
+        </div>
       </div>
     );
   }
 
   if (replay) {
     return (
-      <div className="ch-view">
-        <button type="button" className="ch-btn ch-btn-sm" onClick={() => setReplay(null)}>
-          ← {lang === "vi" ? "Lịch sử" : "History"}
-        </button>
-        <div className="ch-board-area" style={{ marginTop: 12 }}>
-          <div key={shakeKey} className={`ch-board-fit${shakeKey > 0 ? " shake" : ""}`}>
+      <div className="ch-page">
+        <div className="ch-layout">
+          <div className="ch-board-area">
+            <div key={shakeKey} className={`ch-board-fit${shakeKey > 0 ? " shake" : ""}`}>
             <Board
               board={boardAfter(replay.moves, ply)}
               flipped={replay.player_color === "black"}
@@ -193,17 +195,21 @@ export function HistoryView({ lang }: { lang: Lang }) {
               boardLabel=""
               onSquareClick={() => {}}
             />
-            {endedInCheckmate && (
-              <div className="ch-mate-overlay" aria-hidden="true">
-                <div className="ch-mate-banner">
-                  <span className="ch-mate-crown">♔</span>
-                  <span>{lang === "vi" ? "Chiếu hết!" : "Checkmate!"}</span>
+              {endedInCheckmate && (
+                <div className="ch-mate-overlay" aria-hidden="true">
+                  <div className="ch-mate-banner">
+                    <span className="ch-mate-crown">♔</span>
+                    <span>{lang === "vi" ? "Chiếu hết!" : "Checkmate!"}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        <div className="ch-replay-controls">
+          <aside className="ch-panel">
+            <button type="button" className="ch-btn ch-btn-sm" onClick={() => setReplay(null)}>
+              ← {lang === "vi" ? "Lịch sử" : "History"}
+            </button>
+            <div className="ch-replay-controls">
           <button type="button" className="ch-btn ch-btn-sm" disabled={ply === 0} onClick={() => setPly(0)}>
             ⏮
           </button>
@@ -229,16 +235,25 @@ export function HistoryView({ lang }: { lang: Lang }) {
           >
             ⏭
           </button>
-          <button
-            type="button"
-            className="ch-btn ch-btn-sm"
-            disabled={ply === totalPlies}
-            onClick={() => setAutoplay((a) => !a)}
-          >
-            {autoplay
-              ? lang === "vi" ? "⏸ Dừng" : "⏸ Pause"
-              : lang === "vi" ? "⏵ Tự chạy" : "⏵ Auto"}
-          </button>
+              <button
+                type="button"
+                className="ch-btn ch-btn-sm"
+                disabled={ply === totalPlies}
+                onClick={() => setAutoplay((a) => !a)}
+              >
+                {autoplay
+                  ? lang === "vi" ? "⏸ Dừng" : "⏸ Pause"
+                  : lang === "vi" ? "⏵ Tự chạy" : "⏵ Auto"}
+              </button>
+            </div>
+            <p className="ch-hint">
+              {lang === "vi" ? "Máy cấp" : "Level"} {replay.ai_level} ·{" "}
+              {replay.plies} {lang === "vi" ? "nước" : "plies"} ·{" "}
+              {new Date(replay.created_at).toLocaleDateString(
+                lang === "vi" ? "vi-VN" : "en-US"
+              )}
+            </p>
+          </aside>
         </div>
       </div>
     );
@@ -248,6 +263,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
     r === "win" ? "✅" : r === "loss" ? "❌" : "➖";
 
   return (
+    <div className="ch-scroll-area">
     <div className="ch-view">
       <h2>📜 {lang === "vi" ? "Lịch sử ván đấu" : "Game history"}</h2>
       {loading ? (
@@ -292,6 +308,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
           <Pagination page={page} pageCount={pageCount} onPage={setPage} />
         </>
       )}
+    </div>
     </div>
   );
 }

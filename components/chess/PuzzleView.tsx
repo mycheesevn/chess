@@ -270,33 +270,8 @@ export function PuzzleView({ lang }: { lang: Lang }) {
   }
 
   return (
-    <div className="ch-view">
-      <h2>
-        🧩 {lang === "vi" ? "Câu đố hằng ngày" : "Daily puzzle"}
-      </h2>
-      <div className="ch-rush-enter">
-        <button
-          type="button"
-          className="ch-btn ch-btn-rush"
-          onClick={() => setRushMode(true)}
-        >
-          ⚡ {lang === "vi" ? "Puzzle Rush" : "Puzzle Rush"}
-        </button>
-        <span className="ch-hint">
-          {lang === "vi"
-            ? "3 phút · 3 mạng · giải càng nhiều càng tốt!"
-            : "3 minutes · 3 lives · solve as many as you can!"}
-        </span>
-      </div>
-      <p className="ch-puzzle-title">
-        {lang === "vi" ? puzzle.titleVi : puzzle.titleEn}
-      </p>
-      {streak.count > 0 && (
-        <p className="ch-streak">
-          🔥 {streak.count} {lang === "vi" ? "ngày liên tiếp" : "day streak"}
-        </p>
-      )}
-
+    <div className="ch-page">
+      <div className="ch-layout">
       <div className="ch-board-area">
         <div className="ch-board-fit">
           <Board
@@ -328,6 +303,34 @@ export function PuzzleView({ lang }: { lang: Lang }) {
           )}
         </div>
       </div>
+
+        <aside className="ch-panel">
+          <h2>
+            🧩 {lang === "vi" ? "Câu đố hằng ngày" : "Daily puzzle"}
+          </h2>
+
+      <div className="ch-rush-enter">
+        <button
+          type="button"
+          className="ch-btn ch-btn-rush"
+          onClick={() => setRushMode(true)}
+        >
+          ⚡ {lang === "vi" ? "Puzzle Rush" : "Puzzle Rush"}
+        </button>
+        <span className="ch-hint">
+          {lang === "vi"
+            ? "3 phút · 3 mạng · giải càng nhiều càng tốt!"
+            : "3 minutes · 3 lives · solve as many as you can!"}
+        </span>
+      </div>
+      <p className="ch-puzzle-title">
+        {lang === "vi" ? puzzle.titleVi : puzzle.titleEn}
+      </p>
+      {streak.count > 0 && (
+        <p className="ch-streak">
+          🔥 {streak.count} {lang === "vi" ? "ngày liên tiếp" : "day streak"}
+        </p>
+      )}
 
       {failMsg && (
         <p className="ch-puzzle-fail">
@@ -365,6 +368,8 @@ export function PuzzleView({ lang }: { lang: Lang }) {
             : "Guests can play too — sign in to earn +15 XP."}
         </p>
       )}
+            </aside>
+      </div>
     </div>
   );
 }

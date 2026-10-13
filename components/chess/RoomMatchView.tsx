@@ -23,6 +23,13 @@ import {
   type RoomMatch,
 } from "@/lib/supabase/rooms";
 import { useAuth } from "./AuthProvider";
+import { burstConfetti } from "@/lib/chess/confetti";
+import {
+  playCapture,
+  playCheck,
+  playMove,
+  playSelect,
+} from "@/lib/chess/sound";
 import type {
   Board as BoardT,
   CastlingRights,
@@ -147,10 +154,31 @@ export function RoomMatchView({
     [bs]
   );
 
+  // Sounds for new moves (local + remote): capture knock vs quiet knock,
+  // check chime. Only the newest move sounds — never replays history.
+  const soundedPly = useRef(0);
+  useEffect(() => {
+    const ucis = (match?.moves ?? "").trim().split(/\s+/).filter(Boolean);
+    const n = ucis.length;
+    if (n > soundedPly.current) {
+      soundedPly.current = n;
+      const prev = replay(ucis.slice(0, n - 1).join(" "));
+      const m = uciToMove(ucis[n - 1]);
+      if (prev.board[m.toY][m.toX]) playCapture();
+      else playMove();
+      if (inCheck(bs.board, bs.turn) && !status.over) playCheck();
+    } else if (n < soundedPly.current) {
+      soundedPly.current = n; // new match — resync silently
+    }
+  }, [match?.moves, bs, status]);
+
   // Finish the match when the game ends (only the player who just moved reports)
   useEffect(() => {
     if (!status.over || !match || match.status !== "active" || finishedRef.current) return;
     finishedRef.current = true;
+    // Party popper for the local winner (skill: excitement.md — same as live).
+    if (status.kind === "checkmate" && myColor && status.winner === myColor)
+      burstConfetti();
     const result =
       status.kind === "checkmate"
         ? status.winner === "white"
@@ -227,7 +255,9 @@ export function RoomMatchView({
         return;
       }
       const piece = bs.board[y][x];
-      setSelected(piece && piece.color === myColor ? { x, y } : null);
+      const own = piece && piece.color === myColor;
+      setSelected(own ? { x, y } : null);
+      if (own) playSelect();
     },
     [myColor, bs, status, match, targets, pendingPromo, doMove]
   );

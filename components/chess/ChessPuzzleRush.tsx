@@ -274,21 +274,8 @@ export function ChessPuzzleRush({
   }
 
   return (
-    <div className="ch-view">
-      <div className="ch-rush-bar">
-        <span className="ch-rush-time">⏱ {fmtTime(timeLeft)}</span>
-        <span>
-          {lang === "vi" ? "Điểm:" : "Score:"} <strong>{score}</strong>
-        </span>
-        <span className="ch-rush-lives" aria-label={lang === "vi" ? "Mạng" : "Lives"}>
-          {"❤️".repeat(Math.max(0, lives))}
-          {"🖤".repeat(Math.max(0, RUSH_LIVES - lives))}
-        </span>
-      </div>
-      <p className="ch-puzzle-title">
-        {lang === "vi" ? puzzle.titleVi : puzzle.titleEn}
-      </p>
-
+    <div className="ch-page">
+      <div className="ch-layout">
       <div className="ch-board-area">
         <div className="ch-board-fit">
           <Board
@@ -325,6 +312,21 @@ export function ChessPuzzleRush({
         </div>
       </div>
 
+        <aside className="ch-panel">
+          <div className="ch-rush-bar">
+        <span className="ch-rush-time">⏱ {fmtTime(timeLeft)}</span>
+        <span>
+          {lang === "vi" ? "Điểm:" : "Score:"} <strong>{score}</strong>
+        </span>
+        <span className="ch-rush-lives" aria-label={lang === "vi" ? "Mạng" : "Lives"}>
+          {"❤️".repeat(Math.max(0, lives))}
+          {"🖤".repeat(Math.max(0, RUSH_LIVES - lives))}
+        </span>
+      </div>
+      <p className="ch-puzzle-title">
+        {lang === "vi" ? puzzle.titleVi : puzzle.titleEn}
+      </p>
+
       {failFlash && (
         <p className="ch-puzzle-fail">
           {lang === "vi" ? "Chưa đúng! Mất 1 mạng." : "Wrong! Lost a life."}
@@ -339,6 +341,8 @@ export function ChessPuzzleRush({
       >
         ← {lang === "vi" ? "Câu đố hằng ngày" : "Daily puzzle"}
       </button>
+            </aside>
+      </div>
     </div>
   );
 }
