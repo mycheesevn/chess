@@ -210,6 +210,16 @@ body {
   gap: 14px;
 }
 
+/* Room match: the board column — board area on top, the actions row
+   (reactions / resign / cancel) directly under the board, PacClone-style. */
+.ch-room-board-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .ch-board-area {
   flex: 1;
   min-width: 0;
@@ -697,10 +707,10 @@ body {
   }
   /* Room match + corr active game: two-column like the play view — the
      board column takes the full height (the fit clamps to the 642px play
-     size via the global max-height above) and every side element (vs
-     header, status, buttons, move list, reactions, comments) lives in the
-     side panel. This beats the :has() column fixup above by source order
-     at equal specificity. */
+     size via the global max-height above); the actions row sits under the
+     board inside that column, and the remaining side elements (vs header,
+     status, move list, comments) live in the side panel. This beats the
+     :has() column fixup above by source order at equal specificity. */
   .ch-scroll-area .ch-room-match > .ch-room-match-main {
     display: flex;
     flex-direction: row;
@@ -709,7 +719,7 @@ body {
     gap: 12px;
     align-items: stretch;
   }
-  .ch-scroll-area .ch-room-match .ch-room-match-main > .ch-board-area {
+  .ch-scroll-area .ch-room-match .ch-room-match-main > .ch-room-board-col {
     flex: 1 1 auto;
     min-width: 0;
   }
@@ -1593,10 +1603,33 @@ body {
   75% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-90px) scale(0.9); }
 }
-.ch-reaction-bar { display: flex; gap: 6px; margin-bottom: 8px; }
-.ch-reaction-bar button {
-  background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 8px; font-size: 20px; padding: 4px 10px; cursor: pointer;
+/* Actions row directly under the board (PacClone .xq-room-match-actions):
+   reaction pill + guest teaser + resign/cancel. */
+.ch-room-match-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-height: 34px;
+}
+.ch-reaction-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.ch-reaction-btn {
+  background: none;
+  border: none;
+  font-size: 1.35rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 8px;
+  line-height: 1;
 }
 .ch-comments { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; max-height: 200px; overflow-y: auto; }
 .ch-comment {
