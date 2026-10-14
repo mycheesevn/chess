@@ -20,6 +20,7 @@ import { SetupView } from "./SetupView";
 import { LibraryView } from "./LibraryView";
 import { positionToFen } from "@/lib/chess/fen";
 import { AuthModal } from "./AuthModal";
+import { ProfileModal } from "./ProfileModal";
 import { isMuted, setMuted } from "@/lib/chess/sound";
 import {
   useBigCheckBanner,
@@ -33,6 +34,7 @@ import { NotificationsView } from "./NotificationsView";
 import { fetchUnreadCount } from "@/lib/supabase/notifications";
 import { notifyPushTrigger } from "@/lib/push/client";
 import {
+  acceptChallenge,
   respondChallenge,
   subscribeChallenges,
   type IncomingChallenge,
@@ -173,6 +175,8 @@ export function AppShell() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   // Auth modal (gear menu: Log in / Sign up) — mode "in" or "up", null = closed.
   const [authOpen, setAuthOpen] = useState<null | "in" | "up">(null);
+  // Profile modal (identity menu: 👤 Hồ sơ) — mirrors PacClone's position.
+  const [profileOpen, setProfileOpen] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   // Inline change-password form inside the account menu.
@@ -291,12 +295,13 @@ export function AppShell() {
   }, [user?.id]);
 
   const doAcceptChallenge = async (c: IncomingChallenge) => {
-    await respondChallenge(c.id, true);
+    // Accept the challenge, then join the challenge room via its code
+    // (the challenged player is not a member yet and rooms RLS hides the
+    // private room from them).
+    const roomId = await acceptChallenge(c);
     setIncomingChallenge(null);
-    if (c.room_id) {
-      // Challenge rooms pre-add both players as members, so the room can
-      // be opened directly.
-      setPendingRoomId(c.room_id);
+    if (roomId) {
+      setPendingRoomId(roomId);
       setView("rooms");
     }
   };
@@ -515,6 +520,17 @@ export function AppShell() {
                         <span className="ch-muted">{user.email}</span>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="ch-account-menu-item"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setProfileOpen(true);
+                      }}
+                    >
+                      👤 {STR[lang].profile}
+                    </button>
                     <button
                       type="button"
                       role="menuitem"
@@ -893,6 +909,9 @@ export function AppShell() {
           initialMode={authOpen}
           onClose={() => setAuthOpen(null)}
         />
+      )}
+      {profileOpen && (
+        <ProfileModal lang={lang} onClose={() => setProfileOpen(false)} />
       )}
       {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}      {declinedToast && <div className="ch-toast">{declinedToast}</div>}
       {incomingChallenge && (

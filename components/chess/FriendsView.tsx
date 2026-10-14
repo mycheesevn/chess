@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  acceptChallenge,
   listFriends,
   listPendingChallenges,
   respondChallenge,
@@ -67,20 +68,21 @@ export function FriendsView({
   }
 
   const doRespond = async (c: Challenge, accept: boolean) => {
-    await respondChallenge(c.id, accept);
     if (accept) {
-      // Challenge rooms pre-add both players as members, so accepting
-      // just opens the room directly.
+      // Accept, then join the challenge room via its code — the challenged
+      // player is not a member yet and rooms RLS hides the private room.
+      const roomId = await acceptChallenge(c);
       setMsg(
         lang === "vi"
           ? "Đã chấp nhận! Đang vào phòng…"
           : "Accepted! Opening the room…"
       );
-      if (c.room_id && onOpenRoom) {
-        onOpenRoom(c.room_id);
+      if (roomId && onOpenRoom) {
+        onOpenRoom(roomId);
         return;
       }
     } else {
+      await respondChallenge(c.id, false);
       setMsg(lang === "vi" ? "Đã từ chối." : "Declined.");
       // Let the server notify the challenger (it verifies the decline).
       notifyPushTrigger({ kind: "challenge_declined", challengeId: c.id });
@@ -90,7 +92,10 @@ export function FriendsView({
 
   const doChallenge = async (f: FriendRow) => {
     try {
-      const ch = await sendChallenge(f.id);
+      const ch = await sendChallenge(
+        f.id,
+        f.full_name || f.username || undefined
+      );
       notifyPushTrigger({ kind: "challenge", challengeId: ch.id });
       setMsg(
         lang === "vi" ? `Đã gửi lời thách đấu!` : `Challenge sent!`
