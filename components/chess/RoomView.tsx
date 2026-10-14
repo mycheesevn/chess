@@ -397,6 +397,10 @@ function RoomDetail({
   const lastActiveIdRef = useRef<string | null>(null);
   const initialFollowDoneRef = useRef(false);
   const loadedOnceRef = useRef(false);
+  const statusRef = useRef(initialRoom.status);
+  const [hasOpenTournament, setHasOpenTournament] = useState(false);
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
 
   const isLeader = !!user && room.leader_id === user.id;
 
@@ -410,6 +414,15 @@ function RoomDetail({
         getLastFinishedMatch(initialRoom.id),
       ]);
       if (freshRoom) setRoom(freshRoom);
+      // Room closed while we were inside: leave back to the list
+      // (PacClone pattern). Opening an already-closed room for replay
+      // stays viewable — only the transition to closed exits.
+      const prevStatus = statusRef.current;
+      statusRef.current = freshRoom?.status ?? prevStatus;
+      if (prevStatus !== "closed" && freshRoom?.status === "closed") {
+        onExitRef.current();
+        return;
+      }
       setMembers(memberList);
       setPast(pastList);
       // Kicked (or removed) while inside: my member row disappeared.
@@ -594,6 +607,7 @@ function RoomDetail({
           onBackToRoom={() => setViewMatchId(null)}
           onExitRoom={onExit}
           onViewMatch={(id) => setViewMatchId(id)}
+          roomCode={room.code}
         />
       </div>
     );
@@ -675,7 +689,7 @@ function RoomDetail({
             👁 {lang === "vi" ? "Xem ván đấu" : "Watch match"}
           </button>
         </div>
-      ) : isLeader && room.status !== "closed" ? (
+      ) : isLeader && room.status !== "closed" && !hasOpenTournament ? (
         <div className="ch-row-gap">
           <button
             type="button"
@@ -934,6 +948,8 @@ function RoomDetail({
         names={names}
         reloadSignal={reloadSignal}
         onViewMatch={(id) => setViewMatchId(id)}
+        playersCount={orderPreview.length}
+        onOpenTournamentChange={setHasOpenTournament}
       />
     </div>
   );

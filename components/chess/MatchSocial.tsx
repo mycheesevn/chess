@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  fetchCommentAuthor,
   fetchComments,
   postComment,
   sendReaction,
@@ -19,24 +20,50 @@ export function MatchSocial({
   matchId,
   lang,
   moveNumber,
+  disabled,
 }: {
   roomId: string;
   matchId: string;
   lang: Lang;
   moveNumber?: number | null;
+  /** Match cancelled: read-only, like PacClone's RoomComments. */
+  disabled?: boolean;
 }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<RoomComment[]>([]);
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
   const [floaters, setFloaters] = useState<{ id: number; emoji: string }[]>([]);
   const [lastSent, setLastSent] = useState(0);
   const floaterId = useRef(0);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const stickRef = useRef(true);
+
+  // Sticky auto-scroll: follow new comments while the user stays near
+  // the bottom (PacClone pattern).
+  useEffect(() => {
+    const el = feedRef.current;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [comments.length]);
+
+  const onScroll = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
 
   useEffect(() => {
     fetchComments(matchId).then(setComments).catch(() => {});
-    const cc = subscribeComments(matchId, (c) =>
-      setComments((prev) => [...prev, c])
-    );
+    const cc = subscribeComments(matchId, async (c) => {
+      // Realtime rows arrive without the profile join — attach the
+      // author's name/avatar so other users' comments render correctly.
+      let row = c;
+      if (c.user_id && !c.user_name) {
+        const author = await fetchCommentAuthor(c.user_id).catch(() => null);
+        if (author) row = { ...c, ...author };
+      }
+      setComments((prev) => (prev.some((x) => x.id === row.id) ? prev : [...prev, row]));
+    });
     const rc = subscribeReactions(matchId, (emoji) => {
       const id = ++floaterId.current;
       setFloaters((prev) => [...prev, { id, emoji }]);
@@ -53,14 +80,17 @@ export function MatchSocial({
 
   const doPost = async () => {
     const body = draft.trim();
-    if (!body || !user) return;
-    setDraft("");
+    if (!body || !user || sending || disabled) return;
+    setSending(true);
     try {
       await postComment(roomId, matchId, body, moveNumber ?? null);
+      setDraft("");
       const fresh = await fetchComments(matchId);
       setComments(fresh);
     } catch {
-      /* ignore */
+      /* keep the draft so the text isn't lost */
+    } finally {
+      setSending(false);
     }
   };
 
@@ -102,7 +132,15 @@ export function MatchSocial({
         </p>
       )}
 
-      <div className="ch-comments">
+      <div className="ch-comments" ref={feedRef} onScroll={onScroll}>
+        <h4 className="ch-hint">
+          💬 {lang === "vi" ? "Bình luận" : "Comments"} ({comments.length})
+        </h4>
+        {comments.length === 0 && (
+          <p className="ch-hint">
+            {lang === "vi" ? "Chưa có bình luận nào." : "No comments yet."}
+          </p>
+        )}
         {comments.map((c) => (
           <div key={c.id} className="ch-comment">
             {c.avatar_url ? (
@@ -140,8 +178,15 @@ export function MatchSocial({
             placeholder={lang === "vi" ? "Bình luận..." : "Comment..."}
             className="ch-input"
             maxLength={500}
+            disabled={disabled || sending}
+            aria-label={lang === "vi" ? "Bình luận" : "Comments"}
           />
-          <button type="button" className="ch-btn ch-btn-sm" onClick={doPost}>
+          <button
+            type="button"
+            className="ch-btn ch-btn-sm"
+            onClick={doPost}
+            disabled={!draft.trim() || sending || disabled}
+          >
             {lang === "vi" ? "Gửi" : "Send"}
           </button>
         </div>
