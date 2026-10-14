@@ -48,6 +48,7 @@ export function FriendsView({
   const [incoming, setIncoming] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
   const highlightRef = useRef<HTMLLIElement>(null);
 
   // Deep-link: scroll to and flash the highlighted challenge once loaded.
@@ -99,12 +100,13 @@ export function FriendsView({
   const doChallenge = async (f: FriendRow) => {
     if (busyId) return;
     setBusyId(f.id);
+    setMsg("");
     try {
       const ch = await sendChallenge(f.id, displayNameOf(f));
       notifyPushTrigger({ kind: "challenge", challengeId: ch.id });
       if (ch.room_id) onOpenRoom(ch.room_id);
     } catch {
-      /* ignore */
+      setMsg(s.friendsActionError);
     } finally {
       setBusyId(null);
     }
@@ -113,11 +115,12 @@ export function FriendsView({
   const doUnfollow = async (f: FriendRow) => {
     if (busyId) return;
     setBusyId(f.id);
+    setMsg("");
     try {
       await unfollowUser(f.id);
       setFriends((prev) => prev.filter((x) => x.id !== f.id));
     } catch {
-      /* ignore */
+      setMsg(s.friendsActionError);
     } finally {
       setBusyId(null);
     }
@@ -126,12 +129,13 @@ export function FriendsView({
   const doAccept = async (c: Challenge) => {
     if (busyId) return;
     setBusyId(c.id);
+    setMsg("");
     try {
       const roomId = await acceptChallenge(c);
       setIncoming((prev) => prev.filter((x) => x.id !== c.id));
       if (roomId) onOpenRoom(roomId);
     } catch {
-      /* ignore */
+      setMsg(s.friendsActionError);
     } finally {
       setBusyId(null);
     }
@@ -140,12 +144,13 @@ export function FriendsView({
   const doDecline = async (c: Challenge) => {
     if (busyId) return;
     setBusyId(c.id);
+    setMsg("");
     try {
       await declineChallenge(c.id);
       setIncoming((prev) => prev.filter((x) => x.id !== c.id));
       notifyPushTrigger({ kind: "challenge_declined", challengeId: c.id });
     } catch {
-      /* ignore */
+      setMsg(s.friendsActionError);
     } finally {
       setBusyId(null);
     }
@@ -165,6 +170,11 @@ export function FriendsView({
         <h2>
           {s.friendsTitle} ({friends.length})
         </h2>
+        {msg && (
+          <p className="ch-msg ch-msg-error" role="alert">
+            {msg}
+          </p>
+        )}
 
         {incoming.length > 0 && (
           <section>
