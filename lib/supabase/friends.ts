@@ -33,6 +33,18 @@ async function currentUserId(): Promise<string | null> {
   return user?.id ?? null;
 }
 
+/** Ids the current user follows (for per-row follow buttons). */
+export async function fetchFollowingIds(): Promise<Set<string>> {
+  const supabase = createClient();
+  const uid = await currentUserId();
+  if (!uid) return new Set();
+  const { data } = await supabase
+    .from("friendships")
+    .select("friend_id")
+    .eq("user_id", uid);
+  return new Set(((data ?? []) as Array<{ friend_id: string }>).map((r) => r.friend_id));
+}
+
 /** Follow another user. Idempotent (unique constraint). */
 export async function followUser(followedId: string): Promise<void> {
   const supabase = createClient();

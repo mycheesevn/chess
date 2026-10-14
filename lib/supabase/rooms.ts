@@ -180,7 +180,11 @@ export async function fetchRoom(roomId: string): Promise<Room | null> {
   return (data as Room) ?? null;
 }
 
-export async function listMyRooms(): Promise<Room[]> {
+export interface RoomWithCount extends Room {
+  member_count: number;
+}
+
+export async function listMyRooms(): Promise<RoomWithCount[]> {
   const supabase = createClient();
   const {
     data: { user },
@@ -195,7 +199,19 @@ export async function listMyRooms(): Promise<Room[]> {
     .map((r) => r.room)
     .filter((r): r is Room => !!r);
   rooms.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
-  return rooms;
+  // Member counts for the list subtitles (PacClone parity).
+  const ids = rooms.map((r) => r.id);
+  let counts = new Map<string, number>();
+  if (ids.length > 0) {
+    const { data: mems } = await supabase
+      .from("chess_room_members")
+      .select("room_id")
+      .in("room_id", ids);
+    for (const m of (mems ?? []) as Array<{ room_id: string }>) {
+      counts.set(m.room_id, (counts.get(m.room_id) ?? 0) + 1);
+    }
+  }
+  return rooms.map((r) => ({ ...r, member_count: counts.get(r.id) ?? 0 }));
 }
 
 export async function listPublicRooms(): Promise<PublicRoom[]> {

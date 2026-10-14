@@ -37,20 +37,35 @@ export async function createTournament(
   return data as Tournament;
 }
 
-export function standings(t: Tournament): Array<{ player: string; score: number }> {
-  const scores = new Map<string, number>();
+export function standings(t: Tournament): Array<{ player: string; score: number; wins: number; played: number }> {
+  const scores = new Map<string, { score: number; wins: number; played: number }>();
+  const acc = (id: string) => {
+    let r = scores.get(id);
+    if (!r) {
+      r = { score: 0, wins: 0, played: 0 };
+      scores.set(id, r);
+    }
+    return r;
+  };
   for (const p of t.pairings) {
-    if (!scores.has(p.white)) scores.set(p.white, 0);
-    if (!scores.has(p.black)) scores.set(p.black, 0);
-    if (p.result === "white") scores.set(p.white, scores.get(p.white)! + 1);
-    else if (p.result === "black") scores.set(p.black, scores.get(p.black)! + 1);
-    else if (p.result === "draw") {
-      scores.set(p.white, scores.get(p.white)! + 0.5);
-      scores.set(p.black, scores.get(p.black)! + 0.5);
+    if (!p.result) continue;
+    const w = acc(p.white);
+    const b = acc(p.black);
+    w.played++;
+    b.played++;
+    if (p.result === "white") {
+      w.score += 1;
+      w.wins += 1;
+    } else if (p.result === "black") {
+      b.score += 1;
+      b.wins += 1;
+    } else if (p.result === "draw") {
+      w.score += 0.5;
+      b.score += 0.5;
     }
   }
   return [...scores.entries()]
-    .map(([player, score]) => ({ player, score }))
+    .map(([player, s]) => ({ player, score: s.score, wins: s.wins, played: s.played }))
     .sort((a, b) => b.score - a.score);
 }
 

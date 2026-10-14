@@ -86,12 +86,12 @@ export interface LeaderboardRow {
   wins: number;
 }
 
-export async function fetchLeaderboard(limit = 15): Promise<LeaderboardRow[]> {
+export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("chess_stats")
     .select("xp, rating, games_played, wins, user:profiles!inner(id, username, full_name)")
-    .order("xp", { ascending: false })
+    .order("rating", { ascending: false })
     .limit(limit);
   if (error) throw error;
   return ((data ?? []) as unknown as Array<{
@@ -109,6 +109,22 @@ export async function fetchLeaderboard(limit = 15): Promise<LeaderboardRow[]> {
     games_played: r.games_played,
     wins: r.wins,
   }));
+}
+
+/** 1-based rank of a user by rating (null when they have no stats row). */
+export async function fetchMyRank(userId: string): Promise<number | null> {
+  const supabase = createClient();
+  const { data: me } = await supabase
+    .from("chess_stats")
+    .select("rating")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!me) return null;
+  const { count } = await supabase
+    .from("chess_stats")
+    .select("user_id", { count: "exact", head: true })
+    .gt("rating", (me as { rating: number }).rating ?? 800);
+  return (count ?? 0) + 1;
 }
 
 export interface ChessStats {

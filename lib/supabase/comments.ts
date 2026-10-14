@@ -6,32 +6,37 @@ export interface RoomComment {
   body: string;
   created_at: string;
   user_name?: string;
+  avatar_url?: string | null;
+  move_number?: number | null;
 }
 
 export async function fetchComments(matchId: string): Promise<RoomComment[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("chess_room_comments")
-    .select("id, user_id, body, created_at, user:profiles!inner(full_name, username)")
+    .select("id, user_id, body, created_at, move_number, user:profiles!inner(full_name, username, avatar_url)")
     .eq("match_id", matchId)
     .order("created_at", { ascending: true })
     .limit(50);
   if (error) throw error;
   return ((data ?? []) as unknown as Array<
-    RoomComment & { user: { full_name: string | null; username: string | null } }
+    RoomComment & { user: { full_name: string | null; username: string | null; avatar_url: string | null } }
   >).map((c) => ({
     id: c.id,
     user_id: c.user_id,
     body: c.body,
     created_at: c.created_at,
     user_name: c.user.full_name || c.user.username || "Player",
+    avatar_url: c.user.avatar_url,
+    move_number: (c as { move_number?: number | null }).move_number ?? null,
   }));
 }
 
 export async function postComment(
   roomId: string,
   matchId: string,
-  body: string
+  body: string,
+  moveNumber?: number | null
 ): Promise<void> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -41,6 +46,7 @@ export async function postComment(
     match_id: matchId,
     user_id: user.id,
     body: body.slice(0, 500),
+    ...(moveNumber != null ? { move_number: moveNumber } : {}),
   });
   if (error) throw error;
 }

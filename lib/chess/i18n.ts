@@ -142,6 +142,18 @@ export interface Strings {
   achShare: string;
   shareDone: string;
   shareDownloaded: string;
+  leaderboard: string;
+  leaderboardLogin: string;
+  leaderboardEmpty: string;
+  topPlayers: string;
+  noName: string;
+  you: string;
+  wins: string;
+  winRate: string;
+  gamesPlayed: string;
+  loading: string;
+  achRankTitle: (rank: number) => string;
+  xpToNext: (xp: number, lvl: number) => string;
   ambStats: (invites: number, xp: number) => string;
   referralTitle: string;
   referralDesc: string;
@@ -169,6 +181,10 @@ export interface Strings {
   friendsLoading: string;
   friendsSignIn: string;
   friendsActionError: string;
+  roomPromote: string;
+  roomPromoMembers: (n: number) => string;
+  roomPromoFooter: string;
+  roomPromoCodeLabel: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -331,6 +347,18 @@ export const STR: Record<Lang, Strings> = {
     achShare: "📤 Brag",
     shareDone: "Shared! 🎉",
     shareDownloaded: "Image saved + link copied 📋",
+    leaderboard: "Leaderboard",
+    leaderboardLogin: "Log in to see the leaderboard.",
+    leaderboardEmpty: "No players yet — be the first!",
+    topPlayers: "Top players",
+    noName: "Unnamed",
+    you: "you",
+    wins: "wins",
+    winRate: "win rate",
+    gamesPlayed: "games",
+    loading: "Loading…",
+    achRankTitle: (rank) => `🏆 Ranked #${rank} on the leaderboard!`,
+    xpToNext: (xp, lvl) => `${xp} XP to Lv ${lvl}`,
     ambStats: (invites: number, xp: number) =>
       `🎁 Ambassador: invited ${invites} ${invites === 1 ? "person" : "people"} · +${xp} XP earned`,
     referralTitle: "🎁 Invite friends",
@@ -359,6 +387,10 @@ export const STR: Record<Lang, Strings> = {
     friendsLoading: "Loading…",
     friendsSignIn: "Sign in to add friends.",
     friendsActionError: "Something went wrong. Please try again.",
+    roomPromote: "Promote",
+    roomPromoMembers: (n) => `${n} member${n === 1 ? "" : "s"} in room`,
+    roomPromoFooter: "👉 Challenge me at chess-my-cheese-vn.vercel.app",
+    roomPromoCodeLabel: "Room code",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -509,6 +541,18 @@ export const STR: Record<Lang, Strings> = {
     achShare: "📤 Khoe",
     shareDone: "Đã chia sẻ! 🎉",
     shareDownloaded: "Đã tải ảnh + chép link 📋",
+    leaderboard: "Bảng xếp hạng",
+    leaderboardLogin: "Đăng nhập để xem bảng xếp hạng.",
+    leaderboardEmpty: "Chưa có người chơi — hãy là người đầu tiên!",
+    topPlayers: "Người chơi hàng đầu",
+    noName: "Không tên",
+    you: "bạn",
+    wins: "thắng",
+    winRate: "tỉ lệ thắng",
+    gamesPlayed: "ván",
+    loading: "Đang tải…",
+    achRankTitle: (rank) => `🏆 Hạng #${rank} bảng xếp hạng!`,
+    xpToNext: (xp, lvl) => `Còn ${xp} XP lên Cấp ${lvl}`,
     ambStats: (invites: number, xp: number) =>
       `🎁 Ambassador: invited ${invites} ${invites === 1 ? "person" : "people"} · +${xp} XP earned`,
     referralTitle: "🎁 Invite friends",
@@ -537,6 +581,10 @@ export const STR: Record<Lang, Strings> = {
     friendsLoading: "Đang tải…",
     friendsSignIn: "Đăng nhập để kết bạn.",
     friendsActionError: "Đã xảy ra lỗi. Vui lòng thử lại.",
+    roomPromote: "Quảng bá",
+    roomPromoMembers: (n) => `Phòng có ${n} thành viên`,
+    roomPromoFooter: "👉 Thách đấu ngay tại chess-my-cheese-vn.vercel.app",
+    roomPromoCodeLabel: "Mã phòng",
   },
 };
 
