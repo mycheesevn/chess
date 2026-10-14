@@ -6,13 +6,18 @@ export interface UserProfile {
   id: string;
   username: string | null;
   full_name: string | null;
+  birth_date: string | null; // YYYY-MM-DD
   avatar_url: string | null;
-  created_at: string | null;
+  city: string | null;
+  country: string | null;
 }
 
 export interface ProfileUpdate {
   full_name?: string | null;
+  birth_date?: string | null;
   avatar_url?: string | null;
+  city?: string | null;
+  country?: string | null;
 }
 
 /**
@@ -28,7 +33,7 @@ export async function fetchProfile(): Promise<UserProfile | null> {
   if (!user) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, username, full_name, avatar_url, created_at")
+    .select("id, username, full_name, birth_date, avatar_url, city, country")
     .eq("id", user.id)
     .maybeSingle();
   if (error || !data) return null;

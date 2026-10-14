@@ -128,17 +128,46 @@ export interface Strings {
   /* Profile modal */
   profile: string;
   profileFullName: string;
-  profileAvatarAlt: string;
-  profileAvatarChange: string;
-  profileAvatarUploading: string;
+  profileBirthDate: string;
+  profileCity: string;
+  profileCountry: string;
+  profileAvatar: string;
+  profileChangeAvatar: string;
+  profileUploading: string;
   profileUsername: string;
   profileEmail: string;
-  profileMemberSince: string;
-  profileRating: string;
-  profileGames: string;
-  profileWins: string;
   profileSave: string;
   profileSaved: string;
+  achProfileTitle: string;
+  achShare: string;
+  shareDone: string;
+  shareDownloaded: string;
+  ambStats: (invites: number, xp: number) => string;
+  referralTitle: string;
+  referralDesc: string;
+  referralCopy: string;
+  referralCopied: string;
+  referralShare: string;
+  changePassword: string;
+  newPassword: string;
+  confirmPassword: string;
+  passwordChanged: string;
+  passwordMismatch: string;
+  passwordTooShort: string;
+  /* Friends view */
+  friendsTitle: string;
+  friendsChallengeIncoming: string;
+  friendsChallengeFrom: (name: string) => string;
+  friendsAccept: string;
+  friendsDecline: string;
+  friendsEmpty: string;
+  friendsOnline: string;
+  friendsInMatch: string;
+  friendsWatch: string;
+  friendsChallengeBtn: string;
+  friendsUnfriend: string;
+  friendsLoading: string;
+  friendsSignIn: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -286,18 +315,48 @@ export const STR: Record<Lang, Strings> = {
     libBackToLibrary: "Back to library",
     /* Profile modal */
     profile: "Profile",
-    profileFullName: "Display name",
-    profileAvatarAlt: "Avatar",
-    profileAvatarChange: "Change avatar",
-    profileAvatarUploading: "Uploading…",
-    profileUsername: "Username",
+    profileFullName: "Full name",
+    profileBirthDate: "Date of birth",
+    profileCity: "City",
+    profileCountry: "Country",
+    profileAvatar: "Avatar",
+    profileChangeAvatar: "Change photo",
+    profileUploading: "Uploading…",
+    profileUsername: "Leaderboard name",
     profileEmail: "Email",
-    profileMemberSince: "Member since",
-    profileRating: "Elo",
-    profileGames: "Games",
-    profileWins: "Wins",
     profileSave: "Save",
-    profileSaved: "Profile saved!",
+    profileSaved: "Profile saved ✓",
+    achProfileTitle: "My chess achievements",
+    achShare: "📤 Brag",
+    shareDone: "Shared! 🎉",
+    shareDownloaded: "Image saved + link copied 📋",
+    ambStats: (invites: number, xp: number) =>
+      `🎁 Ambassador: invited ${invites} ${invites === 1 ? "person" : "people"} · +${xp} XP earned`,
+    referralTitle: "🎁 Invite friends",
+    referralDesc:
+      "Send your link to friends — when they log in and play 1 game, you both get +20 XP!",
+    referralCopy: "Copy invite link",
+    referralCopied: "Invite link copied! 📋",
+    referralShare: "Share",
+    changePassword: "Change password",
+    newPassword: "New password",
+    confirmPassword: "Confirm new password",
+    passwordChanged: "Password changed ✓",
+    passwordMismatch: "Passwords don't match",
+    passwordTooShort: "Password must be at least 6 characters",
+    friendsTitle: "👤 Friends",
+    friendsChallengeIncoming: "⚔️ Challenges",
+    friendsChallengeFrom: (name: string) => `⚔️ ${name} challenges you!`,
+    friendsAccept: "Accept",
+    friendsDecline: "Decline",
+    friendsEmpty: "No friends yet. Add friends from the leaderboard or inside a room!",
+    friendsOnline: "online",
+    friendsInMatch: "in a match",
+    friendsWatch: "👁 Watch",
+    friendsChallengeBtn: "⚔️ Challenge",
+    friendsUnfriend: "Remove",
+    friendsLoading: "Loading…",
+    friendsSignIn: "Sign in to add friends.",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -433,18 +492,48 @@ export const STR: Record<Lang, Strings> = {
     libBackToLibrary: "Về thư viện",
     /* Profile modal */
     profile: "Hồ sơ",
-    profileFullName: "Tên hiển thị",
-    profileAvatarAlt: "Ảnh đại diện",
-    profileAvatarChange: "Đổi ảnh đại diện",
-    profileAvatarUploading: "Đang tải ảnh…",
-    profileUsername: "Tên đăng nhập",
+    profileFullName: "Họ tên",
+    profileBirthDate: "Ngày sinh",
+    profileCity: "Thành phố",
+    profileCountry: "Quốc gia",
+    profileAvatar: "Ảnh đại diện",
+    profileChangeAvatar: "Đổi ảnh",
+    profileUploading: "Đang tải ảnh…",
+    profileUsername: "Tên trên bảng xếp hạng",
     profileEmail: "Email",
-    profileMemberSince: "Thành viên từ",
-    profileRating: "Elo",
-    profileGames: "Ván đấu",
-    profileWins: "Thắng",
     profileSave: "Lưu",
-    profileSaved: "Đã lưu hồ sơ!",
+    profileSaved: "Đã lưu hồ sơ ✓",
+    achProfileTitle: "Thành tích cờ vua của tôi",
+    achShare: "📤 Khoe",
+    shareDone: "Đã chia sẻ! 🎉",
+    shareDownloaded: "Đã tải ảnh + chép link 📋",
+    ambStats: (invites: number, xp: number) =>
+      `🎁 Ambassador: invited ${invites} ${invites === 1 ? "person" : "people"} · +${xp} XP earned`,
+    referralTitle: "🎁 Invite friends",
+    referralDesc:
+      "Send your link to friends — when they log in and play 1 game, you both get +20 XP!",
+    referralCopy: "Copy invite link",
+    referralCopied: "Invite link copied! 📋",
+    referralShare: "Share",
+    changePassword: "Đổi mật khẩu",
+    newPassword: "Mật khẩu mới",
+    confirmPassword: "Nhập lại mật khẩu mới",
+    passwordChanged: "Đã đổi mật khẩu ✓",
+    passwordMismatch: "Mật khẩu nhập lại không khớp",
+    passwordTooShort: "Mật khẩu phải có ít nhất 6 ký tự",
+    friendsTitle: "👤 Bạn bè",
+    friendsChallengeIncoming: "⚔️ Lời thách đấu",
+    friendsChallengeFrom: (name: string) => `⚔️ ${name} thách đấu bạn!`,
+    friendsAccept: "Vào đấu",
+    friendsDecline: "Từ chối",
+    friendsEmpty: "Chưa có bạn bè. Kết bạn từ bảng xếp hạng hoặc trong phòng chơi nhé!",
+    friendsOnline: "đang online",
+    friendsInMatch: "đang đấu",
+    friendsWatch: "👁 Xem",
+    friendsChallengeBtn: "⚔️ Thách đấu",
+    friendsUnfriend: "Xóa",
+    friendsLoading: "Đang tải…",
+    friendsSignIn: "Đăng nhập để kết bạn.",
   },
 };
 
