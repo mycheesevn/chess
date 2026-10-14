@@ -1573,17 +1573,25 @@ body {
 
 /* ---------- match social ---------- */
 .ch-social { margin-top: 12px; position: relative; }
-.ch-floaters {
-  position: absolute; top: -10px; left: 0; right: 0; height: 0;
-  pointer-events: none; overflow: visible;
+/* Reaction floaters render INSIDE the board container (.ch-board-fit) in
+ * RoomMatchView — never here in the panel — so they animate OVER the board
+ * (PacClone pattern). On mobile the panel stacks below the board, so
+ * panel-confined floaters would expire before ever reaching it. */
+.ch-reaction-float {
+  position: absolute;
+  bottom: 12%;
+  font-size: 2rem;
+  pointer-events: none;
+  z-index: 7;
+  animation: ch-reaction-float 2.2s ease-out forwards;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
 }
-.ch-floater {
-  position: absolute; left: 50%; font-size: 32px;
-  animation: ch-float-up 2s ease-out forwards;
-}
-@keyframes ch-float-up {
-  from { transform: translateY(0) scale(1); opacity: 1; }
-  to { transform: translateY(-120px) scale(1.5); opacity: 0; }
+@keyframes ch-reaction-float {
+  0% { opacity: 0; transform: translateY(10px) scale(0.6); }
+  15% { opacity: 1; transform: translateY(0) scale(1.2); }
+  30% { transform: translateY(-8px) scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-90px) scale(0.9); }
 }
 .ch-reaction-bar { display: flex; gap: 6px; margin-bottom: 8px; }
 .ch-reaction-bar button {
