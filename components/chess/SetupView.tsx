@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Board } from "./Board";
 import { VectorPiece } from "./Pieces";
 import { initialBoard } from "@/lib/chess/engine";
+import { LEVELS } from "@/lib/chess/ai";
 import { STR } from "@/lib/chess/i18n";
 import {
   SETUP_PIECE_ORDER,
@@ -16,6 +17,7 @@ import type {
   Board as BoardT,
   Color,
   Lang,
+  Level,
   Piece,
   PieceType,
 } from "@/lib/chess/types";
@@ -23,6 +25,10 @@ import type {
 interface Props {
   lang: Lang;
   onPlay: (board: BoardT, playerColor: Color, turn: Color) => void;
+  /** The app's shared play-config difficulty (AppShell state) — the
+   * setup form edits it directly, so the game starts at this level. */
+  level: Level;
+  onLevelChange: (level: Level) => void;
 }
 
 type Tool =
@@ -39,7 +45,7 @@ const ERROR_KEYS: Record<SetupError, string> = {
   finished: "setupErrFinished",
 };
 
-export function SetupView({ lang, onPlay }: Props) {
+export function SetupView({ lang, onPlay, level, onLevelChange }: Props) {
   const s = STR[lang];
   const [board, setBoard] = useState<BoardT>(() => initialBoard());
   const [tool, setTool] = useState<Tool>({ kind: "move" });
@@ -203,6 +209,20 @@ export function SetupView({ lang, onPlay }: Props) {
           <section>
             <h2>{s.setupTitle}</h2>
             <div className="ch-setup-form">
+              <label className="ch-field">
+                <span>{s.level}</span>
+                <select
+                  className="ch-select"
+                  value={level}
+                  onChange={(e) => onLevelChange(Number(e.target.value))}
+                >
+                  {LEVELS.map((l) => (
+                    <option key={l.level} value={l.level}>
+                      {s.levelLabel(l.level)} — {s.levelDesc[l.level - 1]}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="ch-field">
                 <span>{s.youPlay}</span>
                 <select

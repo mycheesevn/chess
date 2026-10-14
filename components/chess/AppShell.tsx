@@ -878,7 +878,14 @@ export function AppShell() {
           play board. */}
       {view === "history" && <HistoryView lang={lang} />}
       {view === "puzzle" && <PuzzleView lang={lang} />}
-      {view === "setup" && <SetupView lang={lang} onPlay={handleCustomPlay} />}
+      {view === "setup" && (
+        <SetupView
+          lang={lang}
+          onPlay={handleCustomPlay}
+          level={level}
+          onLevelChange={setLevel}
+        />
+      )}
       {view === "library" && <LibraryView lang={lang} />}
       {authOpen && (
         <AuthModal
