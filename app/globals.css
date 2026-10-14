@@ -2148,3 +2148,24 @@ body {
 .ch-lb-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ch-lb-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ch-lb-sub { color: var(--muted); font-size: 0.82rem; }
+
+/* Guest signup teaser (PacClone GuestTeaser port) */
+.ch-guest-teaser {
+  border: 1px dashed var(--accent, #d4a017);
+  border-radius: 12px;
+  background: rgba(212, 160, 23, 0.08);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+  align-items: center;
+  margin-top: 12px;
+}
+.ch-guest-teaser p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.ch-guest-teaser-stats {
+  font-weight: 600;
+}

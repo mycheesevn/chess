@@ -44,6 +44,29 @@ export function xpForNextLevel(xp: number): number | null {
   return null; // max level
 }
 
+export interface LevelProgress {
+  level: number;
+  /** 0..1 progress WITHIN the current level (PacClone formula). */
+  prog: number;
+  into: number;
+  needed: number;
+}
+
+export function levelProgress(xp: number): LevelProgress {
+  const level = levelForXp(xp);
+  const cur = LEVEL_THRESHOLDS[level - 1] ?? 0;
+  const next = LEVEL_THRESHOLDS[level];
+  if (next === undefined || next <= cur) {
+    return { level, prog: 1, into: xp - cur, needed: 1 };
+  }
+  return {
+    level,
+    prog: Math.min(1, Math.max(0, (xp - cur) / (next - cur))),
+    into: xp - cur,
+    needed: next - cur,
+  };
+}
+
 // ------------------------------------------------------ Rating titles ------
 // Mirror PacClone's RATING_BANDS: titles by Elo band, not by level.
 

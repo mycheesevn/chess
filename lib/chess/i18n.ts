@@ -144,6 +144,11 @@ export interface Strings {
   shareDownloaded: string;
   leaderboard: string;
   leaderboardLogin: string;
+  peakRating: string;
+  dayStreak: string;
+  guestTeaserGames: (n: number) => string;
+  guestTeaserPuzzles: (n: number) => string;
+  guestTeaserCta: string;
   leaderboardEmpty: string;
   topPlayers: string;
   noName: string;
@@ -349,6 +354,11 @@ export const STR: Record<Lang, Strings> = {
     shareDownloaded: "Image saved + link copied 📋",
     leaderboard: "Leaderboard",
     leaderboardLogin: "Log in to see the leaderboard.",
+    peakRating: "peak",
+    dayStreak: "day streak",
+    guestTeaserGames: (n: number) => `You've played ${n} games as a guest`,
+    guestTeaserPuzzles: (n: number) => `solved ${n} puzzles as a guest`,
+    guestTeaserCta: "Log in free to save your progress and play with friends!",
     leaderboardEmpty: "No players yet — be the first!",
     topPlayers: "Top players",
     noName: "Unnamed",
@@ -543,6 +553,11 @@ export const STR: Record<Lang, Strings> = {
     shareDownloaded: "Đã tải ảnh + chép link 📋",
     leaderboard: "Bảng xếp hạng",
     leaderboardLogin: "Đăng nhập để xem bảng xếp hạng.",
+    peakRating: "cao nhất",
+    dayStreak: "ngày liên tiếp",
+    guestTeaserGames: (n: number) => `Bạn đã chơi ${n} ván với tư cách khách`,
+    guestTeaserPuzzles: (n: number) => `giải ${n} thế cờ với tư cách khách`,
+    guestTeaserCta: "Đăng nhập miễn phí để lưu tiến trình và chơi cùng bạn bè!",
     leaderboardEmpty: "Chưa có người chơi — hãy là người đầu tiên!",
     topPlayers: "Người chơi hàng đầu",
     noName: "Không tên",
