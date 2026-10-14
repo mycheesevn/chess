@@ -15,6 +15,7 @@ export interface FriendRow {
   username: string | null;
   full_name: string | null;
   avatar_url: string | null;
+  rating: number;
 }
 
 export function displayNameOf(p: {
@@ -66,7 +67,7 @@ export async function listFriends(): Promise<FriendRow[]> {
   const { data, error } = await supabase
     .from("friendships")
     .select(
-      "friend_id, created_at, profiles!friendships_friend_id_fkey(id, username, full_name, avatar_url)"
+      "friend_id, created_at, profiles!friendships_friend_id_fkey(id, username, full_name, avatar_url, rating)"
     )
     .eq("user_id", uid)
     .order("created_at", { ascending: false });
@@ -78,8 +79,36 @@ export async function listFriends(): Promise<FriendRow[]> {
       username: (p?.username as string) ?? null,
       full_name: (p?.full_name as string) ?? null,
       avatar_url: (p?.avatar_url as string) ?? null,
+      rating: (p?.rating as number) ?? 800,
     };
   });
+}
+
+/** Active room matches involving the given users (that I can see via RLS).
+ *  Maps user_id -> { room_id, code } for the "watch" button. */
+export async function fetchFriendMatchStatus(
+  friendIds: string[]
+): Promise<Record<string, { room_id: string; code: string }>> {
+  const supabase = createClient();
+  if (friendIds.length === 0) return {};
+  const { data } = await supabase
+    .from("chess_room_matches")
+    .select("room_id, white_id, black_id, chess_rooms!inner(code)")
+    .eq("status", "active")
+    .or(`white_id.in.(${friendIds.join(",")}),black_id.in.(${friendIds.join(",")})`);
+  const out: Record<string, { room_id: string; code: string }> = {};
+  for (const m of (data ?? []) as Record<string, unknown>[]) {
+    const rooms = m.chess_rooms as Record<string, unknown> | null;
+    const info = {
+      room_id: m.room_id as string,
+      code: (rooms?.code as string) ?? "",
+    };
+    const wid = m.white_id as string;
+    const bid = m.black_id as string;
+    if (friendIds.includes(wid)) out[wid] = info;
+    if (friendIds.includes(bid)) out[bid] = info;
+  }
+  return out;
 }
 
 export async function isFollowing(followedId: string): Promise<boolean> {
@@ -250,6 +279,63 @@ export async function listPendingChallenges(): Promise<Challenge[]> {
       }),
     } as Challenge;
   });
+}
+
+/* ------------------------------ presence ------------------------------ */
+
+let presenceChannel: RealtimeChannel | null = null;
+let onlineIds = new Set<string>();
+const onlineListeners = new Set<(ids: Set<string>) => void>();
+
+function emitOnline() {
+  const snap = new Set(onlineIds);
+  onlineListeners.forEach((cb) => cb(snap));
+}
+
+/** Track the current user as online. Returns a stop function. */
+export function startPresence(userId: string): () => void {
+  const supabase = createClient();
+  stopPresence();
+  const ch = supabase.channel("online");
+  presenceChannel = ch;
+  ch.on("presence", { event: "sync" }, () => {
+    const state = ch.presenceState();
+    const ids = new Set<string>();
+    for (const presences of Object.values(state)) {
+      for (const p of presences as Array<Record<string, unknown>>) {
+        if (typeof p.user_id === "string") ids.add(p.user_id);
+      }
+    }
+    onlineIds = ids;
+    emitOnline();
+  });
+  ch.subscribe(async (status: string) => {
+    if (status === "SUBSCRIBED") {
+      await ch.track({ user_id: userId, at: Date.now() });
+    }
+  });
+  return stopPresence;
+}
+
+export function stopPresence(): void {
+  if (presenceChannel) {
+    try {
+      createClient().removeChannel(presenceChannel);
+    } catch {
+      /* ignore */
+    }
+    presenceChannel = null;
+  }
+  onlineIds = new Set<string>();
+}
+
+/** Subscribe to online-user updates (immediate initial call). */
+export function subscribeOnline(cb: (ids: Set<string>) => void): () => void {
+  onlineListeners.add(cb);
+  cb(new Set(onlineIds));
+  return () => {
+    onlineListeners.delete(cb);
+  };
 }
 
 /**

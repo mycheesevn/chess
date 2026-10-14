@@ -1,202 +1,279 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   acceptChallenge,
+  declineChallenge,
+  displayNameOf,
+  fetchFriendMatchStatus,
   listFriends,
   listPendingChallenges,
-  respondChallenge,
   sendChallenge,
+  subscribeOnline,
   unfollowUser,
   type Challenge,
   type FriendRow,
 } from "@/lib/supabase/friends";
 import { notifyPushTrigger } from "@/lib/push/client";
 import { useAuth } from "./AuthProvider";
+import { STR } from "@/lib/chess/i18n";
 import type { Lang } from "@/lib/chess/types";
 
-export function FriendsView({
-  lang,
-  highlightChallengeId,
-  onHighlightConsumed,
-  onOpenRoom,
-}: {
+interface Props {
   lang: Lang;
+  /** Open a room by its id (challenge accept / challenge sent). */
+  onOpenRoom: (roomId: string) => void;
+  /** Open a room by invite code (watch a friend's match). */
+  onWatchRoom?: (code: string) => void;
   /** Deep-link: highlight this incoming challenge (e.g. from a notification). */
   highlightChallengeId?: string | null;
   onHighlightConsumed?: () => void;
-  /** Called with the challenge room id after accepting, so the app can open it. */
-  onOpenRoom?: (roomId: string) => void;
-}) {
+}
+
+/** Friends list: online status, active matches, challenges, unfollow. */
+export function FriendsView({
+  lang,
+  onOpenRoom,
+  onWatchRoom,
+  highlightChallengeId,
+  onHighlightConsumed,
+}: Props) {
+  const s = STR[lang];
   const { user } = useAuth();
   const [friends, setFriends] = useState<FriendRow[]>([]);
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [msg, setMsg] = useState("");
-  const highlightRef = useRef<HTMLLIElement | null>(null);
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [matchStatus, setMatchStatus] = useState<
+    Record<string, { room_id: string; code: string }>
+  >({});
+  const [incoming, setIncoming] = useState<Challenge[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const highlightRef = useRef<HTMLLIElement>(null);
 
   // Deep-link: scroll to and flash the highlighted challenge once loaded.
   useEffect(() => {
     if (
       highlightChallengeId &&
-      challenges.some((c) => c.id === highlightChallengeId)
+      incoming.some((c) => c.id === highlightChallengeId)
     ) {
       highlightRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
       const t = setTimeout(() => onHighlightConsumed?.(), 3000);
       return () => clearTimeout(t);
     }
-  }, [highlightChallengeId, challenges, onHighlightConsumed]);
+  }, [highlightChallengeId, incoming, onHighlightConsumed]);
 
-  const load = async () => {
+  const reload = useCallback(async () => {
+    setLoading(true);
     try {
-      setFriends(await listFriends());
-      setChallenges(await listPendingChallenges());
+      const [fs, cs] = await Promise.all([
+        listFriends(),
+        listPendingChallenges(),
+      ]);
+      setFriends(fs);
+      setIncoming(cs);
+      if (fs.length > 0) {
+        setMatchStatus(await fetchFriendMatchStatus(fs.map((f) => f.id)));
+      } else {
+        setMatchStatus({});
+      }
     } catch {
-      /* not configured */
+      /* ignore */
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (user) load();
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+    reload();
+    return subscribeOnline(setOnlineIds);
+  }, [reload]);
 
   if (!user) {
     return (
       <div className="ch-view">
-        <p>{lang === "vi" ? "Đăng nhập để kết bạn." : "Sign in to add friends."}</p>
+        <p>{s.friendsSignIn}</p>
       </div>
     );
   }
 
-  const doRespond = async (c: Challenge, accept: boolean) => {
-    if (accept) {
-      // Accept, then join the challenge room via its code — the challenged
-      // player is not a member yet and rooms RLS hides the private room.
-      const roomId = await acceptChallenge(c);
-      setMsg(
-        lang === "vi"
-          ? "Đã chấp nhận! Đang vào phòng…"
-          : "Accepted! Opening the room…"
-      );
-      if (roomId && onOpenRoom) {
-        onOpenRoom(roomId);
-        return;
-      }
-    } else {
-      await respondChallenge(c.id, false);
-      setMsg(lang === "vi" ? "Đã từ chối." : "Declined.");
-      // Let the server notify the challenger (it verifies the decline).
-      notifyPushTrigger({ kind: "challenge_declined", challengeId: c.id });
-    }
-    load();
-  };
-
   const doChallenge = async (f: FriendRow) => {
+    if (busyId) return;
+    setBusyId(f.id);
     try {
-      const ch = await sendChallenge(
-        f.id,
-        f.full_name || f.username || undefined
-      );
+      const ch = await sendChallenge(f.id, displayNameOf(f));
       notifyPushTrigger({ kind: "challenge", challengeId: ch.id });
-      setMsg(
-        lang === "vi" ? `Đã gửi lời thách đấu!` : `Challenge sent!`
-      );
+      if (ch.room_id) onOpenRoom(ch.room_id);
     } catch {
-      setMsg(lang === "vi" ? "Lỗi." : "Error.");
+      /* ignore */
+    } finally {
+      setBusyId(null);
     }
   };
 
   const doUnfollow = async (f: FriendRow) => {
-    await unfollowUser(f.id);
-    load();
+    if (busyId) return;
+    setBusyId(f.id);
+    try {
+      await unfollowUser(f.id);
+      setFriends((prev) => prev.filter((x) => x.id !== f.id));
+    } catch {
+      /* ignore */
+    } finally {
+      setBusyId(null);
+    }
   };
+
+  const doAccept = async (c: Challenge) => {
+    if (busyId) return;
+    setBusyId(c.id);
+    try {
+      const roomId = await acceptChallenge(c);
+      setIncoming((prev) => prev.filter((x) => x.id !== c.id));
+      if (roomId) onOpenRoom(roomId);
+    } catch {
+      /* ignore */
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const doDecline = async (c: Challenge) => {
+    if (busyId) return;
+    setBusyId(c.id);
+    try {
+      await declineChallenge(c.id);
+      setIncoming((prev) => prev.filter((x) => x.id !== c.id));
+      notifyPushTrigger({ kind: "challenge_declined", challengeId: c.id });
+    } catch {
+      /* ignore */
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="ch-view">
+        <p className="ch-muted">{s.friendsLoading}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="ch-view">
-      <h2>👤 {lang === "vi" ? "Bạn bè" : "Friends"}</h2>
-      {msg && <p className="ch-msg">{msg}</p>}
+      <div className="ch-friends">
+        <h2>
+          {s.friendsTitle} ({friends.length})
+        </h2>
 
-      <div className="ch-room-form">
-        <span>🎁 {lang === "vi" ? "Mời bạn bè (+20 XP cả hai):" : "Invite friends (+20 XP both):"}</span>
-        <button
-          type="button"
-          className="ch-btn ch-btn-sm"
-          onClick={() => {
-            const link = `${window.location.origin}?ref=${user.id}`;
-            navigator.clipboard.writeText(link).catch(() => {});
-            setMsg(lang === "vi" ? "Đã copy link mời!" : "Invite link copied!");
-          }}
-        >
-          {lang === "vi" ? "Copy link mời" : "Copy invite link"}
-        </button>
-      </div>
+        {incoming.length > 0 && (
+          <section>
+            <h3>{s.friendsChallengeIncoming}</h3>
+            <ul className="ch-board-list">
+              {incoming.map((c) => (
+                <li
+                  key={c.id}
+                  ref={c.id === highlightChallengeId ? highlightRef : undefined}
+                  className={`ch-lb-row${
+                    c.id === highlightChallengeId ? " ch-challenge-highlight" : ""
+                  }`}
+                >
+                  <span className="ch-lb-name">
+                    <strong>{s.friendsChallengeFrom(c.challenger_name ?? "?")}</strong>
+                  </span>
+                  <span className="ch-room-order-btns">
+                    <button
+                      type="button"
+                      className="ch-btn ch-btn-sm"
+                      disabled={busyId === c.id}
+                      onClick={() => doAccept(c)}
+                    >
+                      {s.friendsAccept}
+                    </button>
+                    <button
+                      type="button"
+                      className="ch-btn ch-btn-sm"
+                      disabled={busyId === c.id}
+                      onClick={() => doDecline(c)}
+                    >
+                      {s.friendsDecline}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
-      {challenges.length > 0 && (
-        <>
-          <h3>⚔️ {lang === "vi" ? "Lời thách đấu" : "Challenges"}</h3>
+        {friends.length === 0 ? (
+          <p className="ch-muted">{s.friendsEmpty}</p>
+        ) : (
           <ul className="ch-board-list">
-            {challenges.map((c) => (
-              <li
-                key={c.id}
-                ref={c.id === highlightChallengeId ? highlightRef : undefined}
-                className={`ch-lb-row${
-                  c.id === highlightChallengeId ? " ch-challenge-highlight" : ""
-                }`}
-              >
-                <span className="ch-lb-name">
-                  {c.challenger_name} {lang === "vi" ? "thách đấu bạn!" : "challenges you!"}
-                </span>
-                <button
-                  type="button"
-                  className="ch-btn ch-btn-primary ch-btn-sm"
-                  onClick={() => doRespond(c, true)}
-                >
-                  {lang === "vi" ? "Nhận" : "Accept"}
-                </button>
-                <button
-                  type="button"
-                  className="ch-btn ch-btn-sm"
-                  onClick={() => doRespond(c, false)}
-                >
-                  {lang === "vi" ? "Từ chối" : "Decline"}
-                </button>
-              </li>
-            ))}
+            {friends.map((f) => {
+              const online = onlineIds.has(f.id);
+              const ms = matchStatus[f.id];
+              return (
+                <li key={f.id} className="ch-lb-row">
+                  <span className="ch-friend-avatar">
+                    {f.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={f.avatar_url}
+                        alt=""
+                        className="ch-friend-avatar-img"
+                      />
+                    ) : (
+                      displayNameOf(f).slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                  <span className="ch-lb-name">
+                    <strong>
+                      <span
+                        className={`ch-online-dot${online ? " on" : ""}`}
+                        aria-label={online ? s.friendsOnline : undefined}
+                      />
+                      {displayNameOf(f)}
+                    </strong>
+                    <span className="ch-friend-sub">
+                      ⭐ {f.rating}
+                      {online && ` · ${s.friendsOnline}`}
+                      {ms && ` · 🔴 ${s.friendsInMatch}`}
+                    </span>
+                  </span>
+                  <span className="ch-room-order-btns">
+                    {ms?.code && onWatchRoom && (
+                      <button
+                        type="button"
+                        className="ch-btn ch-btn-sm"
+                        onClick={() => onWatchRoom(ms.code)}
+                      >
+                        {s.friendsWatch}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ch-btn ch-btn-sm"
+                      disabled={busyId === f.id}
+                      onClick={() => doChallenge(f)}
+                    >
+                      {s.friendsChallengeBtn}
+                    </button>
+                    <button
+                      type="button"
+                      className="ch-btn ch-btn-sm"
+                      disabled={busyId === f.id}
+                      onClick={() => doUnfollow(f)}
+                      title={s.friendsUnfriend}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
-        </>
-      )}
-
-      <h3>
-        {lang === "vi" ? `Đang theo dõi (${friends.length})` : `Following (${friends.length})`}
-      </h3>
-      {friends.length === 0 ? (
-        <p className="ch-hint">
-          {lang === "vi"
-            ? "Kết bạn từ bảng xếp hạng để thách đấu."
-            : "Follow players from the leaderboard to challenge them."}
-        </p>
-      ) : (
-        <ul className="ch-board-list">
-          {friends.map((f) => (
-            <li key={f.id} className="ch-lb-row">
-              <span className="ch-lb-name">{f.full_name || f.username || "Player"}</span>
-              <button
-                type="button"
-                className="ch-btn ch-btn-primary ch-btn-sm"
-                onClick={() => doChallenge(f)}
-              >
-                ⚔️ {lang === "vi" ? "Thách đấu" : "Challenge"}
-              </button>
-              <button
-                type="button"
-                className="ch-btn ch-btn-sm"
-                onClick={() => doUnfollow(f)}
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        )}
+      </div>
     </div>
   );
 }

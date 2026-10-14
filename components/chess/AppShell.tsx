@@ -36,6 +36,7 @@ import { notifyPushTrigger } from "@/lib/push/client";
 import {
   acceptChallenge,
   respondChallenge,
+  startPresence,
   subscribeChallenges,
   type IncomingChallenge,
 } from "@/lib/supabase/friends";
@@ -179,11 +180,6 @@ export function AppShell() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  // Inline change-password form inside the account menu.
-  const [pwOpen, setPwOpen] = useState(false);
-  const [pw, setPw] = useState("");
-  const [pwMsg, setPwMsg] = useState("");
-  const [pwBusy, setPwBusy] = useState(false);
 
   // Play configuration owned here — it lives in the drawer's play-settings
   // section (PacClone pattern); ChessGame receives it as controlled props.
@@ -294,6 +290,13 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  // Online presence while logged in (friends list shows online dots).
+  useEffect(() => {
+    if (!user) return;
+    const stop = startPresence(user.id);
+    return stop;
+  }, [user?.id]);
+
   const doAcceptChallenge = async (c: IncomingChallenge) => {
     // Accept the challenge, then join the challenge room via its code
     // (the challenged player is not a member yet and rooms RLS hides the
@@ -399,31 +402,6 @@ export function AppShell() {
       await refreshProfile();
     } catch {
       /* offline or not configured — skip silently */
-    }
-  };
-
-  const doChangePassword = async () => {
-    setPwMsg("");
-    if (pw.length < 6) {
-      setPwMsg(
-        lang === "vi"
-          ? "Mật khẩu phải có ít nhất 6 ký tự."
-          : "Password must be at least 6 characters."
-      );
-      return;
-    }
-    setPwBusy(true);
-    try {
-      const { createClient } = await import("@/lib/supabase/client");
-      const sb = createClient();
-      const { error } = await sb.auth.updateUser({ password: pw });
-      if (error) throw error;
-      setPwMsg(lang === "vi" ? "Đã đổi mật khẩu." : "Password changed.");
-      setPw("");
-    } catch {
-      setPwMsg(lang === "vi" ? "Đổi mật khẩu thất bại." : "Failed to change password.");
-    } finally {
-      setPwBusy(false);
     }
   };
 
@@ -589,45 +567,6 @@ export function AppShell() {
                         <BoardStyleField lang={lang} />
                         <SettingsToggles lang={lang} />
                         <PushSettings lang={lang} />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="ch-account-menu-item"
-                      aria-expanded={pwOpen}
-                      onClick={() => {
-                        setPwOpen((v) => !v);
-                        setPwMsg("");
-                      }}
-                    >
-                      🔑 {lang === "vi" ? "Đổi mật khẩu" : "Change password"}
-                      <span aria-hidden="true" className="ch-caret">
-                        {pwOpen ? "▾" : "▸"}
-                      </span>
-                    </button>
-                    {pwOpen && (
-                      <div className="ch-account-menu-settings">
-                        <input
-                          type="password"
-                          value={pw}
-                          onChange={(e) => setPw(e.target.value)}
-                          placeholder={
-                            lang === "vi"
-                              ? "Mật khẩu mới (≥ 6 ký tự)"
-                              : "New password (≥ 6 chars)"
-                          }
-                          className="ch-input"
-                        />
-                        <button
-                          type="button"
-                          className="ch-btn ch-btn-sm"
-                          disabled={pwBusy}
-                          onClick={doChangePassword}
-                        >
-                          {lang === "vi" ? "Đổi mật khẩu" : "Change password"}
-                        </button>
-                        {pwMsg && <p className="ch-msg">{pwMsg}</p>}
                       </div>
                     )}
                     <button
@@ -872,6 +811,10 @@ export function AppShell() {
               onHighlightConsumed={() => setDeepLinkChallengeId(null)}
               onOpenRoom={(id) => {
                 setPendingRoomId(id);
+                setView("rooms");
+              }}
+              onWatchRoom={(code) => {
+                setDeepLinkRoomCode(code);
                 setView("rooms");
               }}
             />

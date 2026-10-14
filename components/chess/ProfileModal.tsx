@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import { createClient } from "@/lib/supabase/client";
 import {
   fetchProfile,
   updateProfile,
   uploadAvatar,
+  type UserProfile,
 } from "@/lib/supabase/profile";
-import { levelForXp, titleForLevel, xpForNextLevel, LEVEL_THRESHOLDS } from "@/lib/chess/levels";
+import { displayName } from "@/lib/supabase/rooms";
+import { levelForXp, titleForLevel } from "@/lib/chess/levels";
+import { shareAchievement } from "@/lib/chess/achievementCard";
+import { fetchMyInviteCount } from "@/lib/supabase/referral";
+import { ReferralCard } from "./ReferralCard";
 import { STR } from "@/lib/chess/i18n";
 import type { Lang } from "@/lib/chess/types";
 
@@ -16,51 +22,82 @@ interface Props {
   onClose: () => void;
 }
 
-function memberSince(iso: string | null, lang: Lang): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US", {
-      day: "numeric",
-      month: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
 export function ProfileModal({ lang, onClose }: Props) {
   const s = STR[lang];
   const { user, chessStats, refreshProfile } = useAuth();
-  const [fullName, setFullName] = useState("");
-  const [username, setUsername] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [since, setSince] = useState<string | null>(null);
-  const [avatarBust, setAvatarBust] = useState(0);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fullName, setFullName] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarBust, setAvatarBust] = useState(0);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(
+    null
+  );
+  const [invites, setInvites] = useState(0);
+  const [sharingAch, setSharingAch] = useState(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const p = await fetchProfile();
-        if (p) {
-          setFullName(p.full_name ?? "");
-          setUsername(p.username);
-          setAvatarUrl(p.avatar_url);
-          setSince(p.created_at);
-        }
-      } catch {
-        /* supabase not configured */
-      } finally {
-        setLoading(false);
+    fetchProfile().then((p) => {
+      setProfile(p);
+      if (p) {
+        setFullName(p.full_name ?? "");
+        setBirthDate(p.birth_date ?? "");
+        setCity(p.city ?? "");
+        setCountry(p.country ?? "");
+        setAvatarUrl(p.avatar_url);
       }
-    })();
+      setLoading(false);
+    });
+    // Ambassador stats: never break the modal on failure.
+    fetchMyInviteCount().then(setInvites).catch(() => {});
   }, []);
+
+  /** Share the user's profile as an achievement card. */
+  const shareProfile = async () => {
+    if (sharingAch) return;
+    setSharingAch(true);
+    try {
+      const name =
+        profile?.full_name?.trim() ||
+        displayName({
+          full_name: profile?.full_name ?? null,
+          username: profile?.username ?? null,
+          email: user?.email ?? null,
+        });
+      const rating = chessStats?.rating ?? 800;
+      const level = levelForXp(chessStats?.xp ?? 0);
+      const title = titleForLevel(level, lang);
+      const outcome = await shareAchievement(
+        "profile",
+        {
+          title: s.achProfileTitle,
+          displayName: name,
+          playerTitle: title,
+          rating,
+          level,
+        },
+        lang
+      );
+      setShareToast(outcome === "shared" ? s.shareDone : s.shareDownloaded);
+      window.setTimeout(() => setShareToast(null), 4000);
+    } catch {
+      /* ignore */
+    } finally {
+      setSharingAch(false);
+    }
+  };
 
   const onPickAvatar = async (file: File | undefined) => {
     if (!file) return;
@@ -88,7 +125,12 @@ export function ProfileModal({ lang, onClose }: Props) {
     setSaving(true);
     setError(null);
     setSaved(false);
-    const err = await updateProfile({ full_name: fullName.trim() || null });
+    const err = await updateProfile({
+      full_name: fullName.trim() || null,
+      birth_date: birthDate || null,
+      city: city.trim() || null,
+      country: country.trim() || null,
+    });
     setSaving(false);
     if (err) setError(err);
     else {
@@ -97,15 +139,38 @@ export function ProfileModal({ lang, onClose }: Props) {
     }
   };
 
-  const xp = chessStats?.xp ?? 0;
-  const level = levelForXp(xp);
-  const title = titleForLevel(level, lang);
-  const nextTh = xpForNextLevel(xp);
-  const prevTh = LEVEL_THRESHOLDS[level - 1] ?? 0;
-  const intoLevel = xp - prevTh;
-  const forNext = (nextTh ?? xp) - prevTh;
-  const pct = nextTh === null ? 100 : Math.min(100, (intoLevel / Math.max(1, forNext)) * 100);
   const avatarSrc = avatarUrl ? `${avatarUrl}?v=${avatarBust}` : null;
+
+  const onChangePassword = async () => {
+    setPwMsg(null);
+    if (pw1.length < 6) {
+      setPwMsg({ ok: false, text: s.passwordTooShort });
+      return;
+    }
+    if (pw1 !== pw2) {
+      setPwMsg({ ok: false, text: s.passwordMismatch });
+      return;
+    }
+    setPwBusy(true);
+    try {
+      const { error: err } = await createClient().auth.updateUser({
+        password: pw1,
+      });
+      if (err) setPwMsg({ ok: false, text: err.message });
+      else {
+        setPwMsg({ ok: true, text: s.passwordChanged });
+        setPw1("");
+        setPw2("");
+      }
+    } catch (e) {
+      setPwMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Failed",
+      });
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   return (
     <div className="ch-modal-root" onClick={onClose}>
@@ -134,7 +199,7 @@ export function ProfileModal({ lang, onClose }: Props) {
               <div className="ch-profile-avatar">
                 {avatarSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatarSrc} alt={s.profileAvatarAlt} />
+                  <img src={avatarSrc} alt={s.profileAvatar} />
                 ) : (
                   <span>👤</span>
                 )}
@@ -146,7 +211,7 @@ export function ProfileModal({ lang, onClose }: Props) {
                   disabled={uploading}
                   onClick={() => fileRef.current?.click()}
                 >
-                  {uploading ? s.profileAvatarUploading : s.profileAvatarChange}
+                  {uploading ? s.profileUploading : s.profileChangeAvatar}
                 </button>
                 <input
                   ref={fileRef}
@@ -160,7 +225,6 @@ export function ProfileModal({ lang, onClose }: Props) {
                 />
               </div>
             </div>
-
             <label className="ch-field">
               <span>{s.profileFullName}</span>
               <input
@@ -168,54 +232,46 @@ export function ProfileModal({ lang, onClose }: Props) {
                 value={fullName}
                 maxLength={80}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder={username ?? ""}
+                placeholder={profile?.username ?? ""}
               />
             </label>
-
-            <div className="ch-profile-level">
-              <div className="ch-profile-level-head">
-                <span>⭐ Lv {level} · {title}</span>
-                <span className="ch-muted">
-                  {nextTh === null
-                    ? `${xp} XP`
-                    : `${intoLevel}/${forNext} XP`}
-                </span>
-              </div>
-              <div className="ch-profile-xpbar" aria-hidden="true">
-                <span style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-
-            <div className="ch-profile-stats">
-              <div className="ch-profile-stat">
-                <b>{chessStats?.rating ?? 800}</b>
-                <span>{s.profileRating}</span>
-              </div>
-              <div className="ch-profile-stat">
-                <b>{chessStats?.games_played ?? 0}</b>
-                <span>{s.profileGames}</span>
-              </div>
-              <div className="ch-profile-stat">
-                <b>{chessStats?.wins ?? 0}</b>
-                <span>{s.profileWins}</span>
-              </div>
-            </div>
-
+            <label className="ch-field">
+              <span>{s.profileBirthDate}</span>
+              <input
+                className="ch-input"
+                type="date"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+              />
+            </label>
+            <label className="ch-field">
+              <span>{s.profileCity}</span>
+              <input
+                className="ch-input"
+                value={city}
+                maxLength={80}
+                onChange={(e) => setCity(e.target.value)}
+              />
+            </label>
+            <label className="ch-field">
+              <span>{s.profileCountry}</span>
+              <input
+                className="ch-input"
+                value={country}
+                maxLength={80}
+                onChange={(e) => setCountry(e.target.value)}
+              />
+            </label>
             <div className="ch-profile-readonly">
               <div>
                 <span className="ch-muted">{s.profileUsername}: </span>
-                <strong>{username ?? "—"}</strong>
+                <strong>{profile?.username ?? "—"}</strong>
               </div>
               <div>
                 <span className="ch-muted">{s.profileEmail}: </span>
                 <strong>{user?.email ?? "—"}</strong>
               </div>
-              <div>
-                <span className="ch-muted">{s.profileMemberSince}: </span>
-                <strong>{memberSince(since, lang)}</strong>
-              </div>
             </div>
-
             {error && <p className="ch-msg ch-msg-error">{error}</p>}
             {saved && <p className="ch-msg">{s.profileSaved}</p>}
             <button
@@ -226,6 +282,53 @@ export function ProfileModal({ lang, onClose }: Props) {
             >
               {saving ? "…" : s.profileSave}
             </button>
+            <button
+              type="button"
+              className="ch-btn ch-profile-save"
+              onClick={shareProfile}
+              disabled={sharingAch}
+            >
+              {sharingAch ? "…" : s.achShare}
+            </button>
+            {shareToast && <div className="ch-toast">{shareToast}</div>}
+            {invites > 0 && (
+              <div className="ch-ambassador-line">
+                🎁 {s.ambStats(invites, invites * 20)}
+              </div>
+            )}
+            <ReferralCard lang={lang} />
+            <div className="ch-profile-pw">
+              <h3>🔑 {s.changePassword}</h3>
+              <input
+                className="ch-input"
+                type="password"
+                autoComplete="new-password"
+                placeholder={s.newPassword}
+                value={pw1}
+                onChange={(e) => setPw1(e.target.value)}
+              />
+              <input
+                className="ch-input"
+                type="password"
+                autoComplete="new-password"
+                placeholder={s.confirmPassword}
+                value={pw2}
+                onChange={(e) => setPw2(e.target.value)}
+              />
+              <button
+                type="button"
+                className="ch-btn"
+                onClick={onChangePassword}
+                disabled={pwBusy || !pw1 || !pw2}
+              >
+                {pwBusy ? "…" : s.changePassword}
+              </button>
+              {pwMsg && (
+                <p className={pwMsg.ok ? "ch-msg" : "ch-msg ch-msg-error"}>
+                  {pwMsg.text}
+                </p>
+              )}
+            </div>
           </>
         )}
       </div>
