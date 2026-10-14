@@ -136,15 +136,10 @@ export function displayName(p: {
   );
 }
 
-function genCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
-
+/** Create a room via the chess_create_room SECURITY DEFINER RPC (015).
+ *  A client INSERT + read-back cannot see its own new PRIVATE room under
+ *  RLS (the member row is inserted after the room), so the RPC does
+ *  server-side code generation and inserts room + leader member atomically. */
 export async function createRoom(
   name: string,
   isPublic: boolean,
@@ -155,33 +150,13 @@ export async function createRoom(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
-  // Retry a few times on the (rare) unique-code collision.
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data, error } = await supabase
-      .from("chess_rooms")
-      .insert({
-        code: genCode(),
-        name,
-        leader_id: user.id,
-        is_public: isPublic,
-        max_players: maxPlayers,
-        turn_order: [user.id],
-      })
-      .select()
-      .single();
-    if (!error && data) {
-      await supabase.from("chess_room_members").insert({
-        room_id: data.id,
-        user_id: user.id,
-        role: "player",
-      });
-      return data as Room;
-    }
-    lastErr = error;
-    if (error && !/duplicate|unique/i.test(error.message)) break;
-  }
-  throw lastErr ?? new Error("create failed");
+  const { data, error } = await supabase.rpc("chess_create_room", {
+    p_name: name,
+    p_is_public: isPublic,
+    p_max_players: maxPlayers,
+  });
+  if (error) throw error;
+  return data as Room;
 }
 
 /** Join via the chess_join_room RPC — a direct SELECT by code cannot

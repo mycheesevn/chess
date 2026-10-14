@@ -168,6 +168,7 @@ export interface Strings {
   friendsUnfriend: string;
   friendsLoading: string;
   friendsSignIn: string;
+  friendsActionError: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -357,6 +358,7 @@ export const STR: Record<Lang, Strings> = {
     friendsUnfriend: "Remove",
     friendsLoading: "Loading…",
     friendsSignIn: "Sign in to add friends.",
+    friendsActionError: "Something went wrong. Please try again.",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -534,6 +536,7 @@ export const STR: Record<Lang, Strings> = {
     friendsUnfriend: "Xóa",
     friendsLoading: "Đang tải…",
     friendsSignIn: "Đăng nhập để kết bạn.",
+    friendsActionError: "Đã xảy ra lỗi. Vui lòng thử lại.",
   },
 };
 
