@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Board } from "./Board";
 import { useAuth } from "./AuthProvider";
+import { bumpGuestStat } from "@/lib/guestStats";
 import {
   applyMove,
   gameStatus,
@@ -173,6 +174,7 @@ export function PuzzleView({ lang }: { lang: Lang }) {
         /* offline */
       }
     } else {
+      bumpGuestStat("puzzles");
       setMsg(
         lang === "vi"
           ? "Đăng nhập để nhận XP cho mỗi câu đố!"

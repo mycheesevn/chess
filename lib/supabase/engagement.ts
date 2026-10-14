@@ -80,6 +80,7 @@ export interface LeaderboardRow {
   id: string;
   username: string | null;
   full_name: string | null;
+  avatar_url: string | null;
   xp: number;
   rating: number;
   games_played: number;
@@ -90,8 +91,9 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("chess_stats")
-    .select("xp, rating, games_played, wins, user:profiles!inner(id, username, full_name)")
+    .select("xp, rating, games_played, wins, user:profiles!inner(id, username, full_name, avatar_url)")
     .order("rating", { ascending: false })
+    .order("xp", { ascending: false })
     .limit(limit);
   if (error) throw error;
   return ((data ?? []) as unknown as Array<{
@@ -99,11 +101,12 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
     rating: number;
     games_played: number;
     wins: number;
-    user: { id: string; username: string | null; full_name: string | null };
+    user: { id: string; username: string | null; full_name: string | null; avatar_url: string | null };
   }>).map((r) => ({
     id: r.user.id,
     username: r.user.username,
     full_name: r.user.full_name,
+    avatar_url: r.user.avatar_url,
     xp: r.xp,
     rating: r.rating,
     games_played: r.games_played,
@@ -111,25 +114,35 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardRow[]> {
   }));
 }
 
-/** 1-based rank of a user by rating (null when they have no stats row). */
+/** 1-based rank of a user, mirroring the board's order exactly
+ *  (rating desc, XP desc as the tiebreak). Null with no stats row. */
 export async function fetchMyRank(userId: string): Promise<number | null> {
   const supabase = createClient();
   const { data: me } = await supabase
     .from("chess_stats")
-    .select("rating")
+    .select("rating, xp")
     .eq("user_id", userId)
     .maybeSingle();
   if (!me) return null;
-  const { count } = await supabase
+  const myRating = (me as { rating: number }).rating ?? 800;
+  const myXp = (me as { xp: number }).xp ?? 0;
+  const higher = await supabase
     .from("chess_stats")
     .select("user_id", { count: "exact", head: true })
-    .gt("rating", (me as { rating: number }).rating ?? 800);
-  return (count ?? 0) + 1;
+    .gt("rating", myRating);
+  const tiedHigherXp = await supabase
+    .from("chess_stats")
+    .select("user_id", { count: "exact", head: true })
+    .eq("rating", myRating)
+    .gt("xp", myXp);
+  return (higher.count ?? 0) + (tiedHigherXp.count ?? 0) + 1;
 }
 
 export interface ChessStats {
   xp: number;
   rating: number;
+  /** Peak rating (migration 017); falls back to rating before it lands. */
+  peak_rating: number;
   games_played: number;
   wins: number;
 }
@@ -138,9 +151,16 @@ export async function fetchMyStats(userId: string): Promise<ChessStats | null> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("chess_stats")
-    .select("xp, rating, games_played, wins")
+    .select("*")
     .eq("user_id", userId)
     .single();
   if (error) return null;
-  return data as ChessStats;
+  const row = data as ChessStats & { peak_rating?: number | null };
+  return {
+    xp: row.xp ?? 0,
+    rating: row.rating ?? 800,
+    peak_rating: row.peak_rating ?? row.rating ?? 800,
+    games_played: row.games_played ?? 0,
+    wins: row.wins ?? 0,
+  };
 }

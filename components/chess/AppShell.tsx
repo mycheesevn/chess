@@ -11,6 +11,7 @@ import {
   type BoardTheme,
 } from "@/lib/chess/boardTheme";
 import { claimWelcome } from "@/lib/supabase/quests";
+import { bumpGuestStat } from "@/lib/guestStats";
 import { CheckinView } from "./CheckinView";
 import { LeaderboardView } from "./LeaderboardView";
 import { RoomView } from "./RoomView";
@@ -214,6 +215,12 @@ export function AppShell() {
     window.addEventListener("beforeinstallprompt", h);
     return () => window.removeEventListener("beforeinstallprompt", h);
   }, []);
+  // Guest teaser (and future guest CTAs) ask to open the auth modal.
+  useEffect(() => {
+    const open = () => setAuthOpen("in");
+    window.addEventListener("ch:open-auth", open);
+    return () => window.removeEventListener("ch:open-auth", open);
+  }, []);
   const onInstallClick = async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
@@ -396,7 +403,12 @@ export function AppShell() {
     uciMoves: string,
     startFen: string
   ) => {
-    if (!user) return; // guests don't earn XP
+    if (!user) {
+      // Guests don't earn XP, but their games feed the signup teaser
+      // (PacClone guestStats pattern).
+      bumpGuestStat("games");
+      return;
+    }
     try {
       await recordGameResult(color, level, result, plies, uciMoves, startFen);
       await refreshProfile();

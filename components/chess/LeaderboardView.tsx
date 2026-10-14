@@ -4,16 +4,18 @@ import { useEffect, useState } from "react";
 import {
   fetchLeaderboard,
   fetchMyRank,
+  checkinHistory,
   type LeaderboardRow,
 } from "@/lib/supabase/engagement";
 import { fetchFollowingIds } from "@/lib/supabase/friends";
 import { useAuth } from "./AuthProvider";
 import { StatsView } from "./StatsView";
+import { GuestTeaser } from "./GuestTeaser";
 import { FriendButton } from "./FriendButton";
 import { Pagination, usePagination } from "./Pagination";
 import { shareAchievement } from "@/lib/chess/achievementCard";
 import { STR } from "@/lib/chess/i18n";
-import { levelForXp, ratingTitle, xpForNextLevel } from "@/lib/chess/levels";
+import { levelForXp, levelProgress, ratingTitle, xpForNextLevel } from "@/lib/chess/levels";
 import type { Lang } from "@/lib/chess/types";
 
 const LEADERBOARD_PAGE_SIZE = 15;
@@ -31,6 +33,7 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const paging = usePagination(rows, LEADERBOARD_PAGE_SIZE);
   const [myRank, setMyRank] = useState<number | null>(null);
+  const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sharingAch, setSharingAch] = useState(false);
   const [shareToast, setShareToast] = useState<string | null>(null);
@@ -50,6 +53,25 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
       .catch(() => {})
       .finally(() => setLoading(false));
     fetchFollowingIds().then(setFollowing).catch(() => {});
+    checkinHistory()
+      .then((rows) => {
+        if (rows.length === 0) return;
+        const fmt = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+        const today = fmt.format(new Date());
+        const yesterday = fmt.format(new Date(Date.now() - 86400000));
+        const latest = rows[0];
+        setStreak(
+          latest.date === today || latest.date === yesterday
+            ? latest.streak
+            : 0
+        );
+      })
+      .catch(() => {});
   }, [user]);
 
   /** Share the user's leaderboard rank as an achievement card. */
@@ -73,10 +95,7 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
 
   const myLevel = chessStats ? levelForXp(chessStats.xp) : 1;
   const nextXp = chessStats ? xpForNextLevel(chessStats.xp) : null;
-  const progress =
-    chessStats && nextXp != null && nextXp > 0
-      ? Math.min(1, chessStats.xp / nextXp)
-      : 1;
+  const progress = chessStats ? levelProgress(chessStats.xp).prog : 1;
   const winRate =
     chessStats && chessStats.games_played > 0
       ? Math.round((chessStats.wins / chessStats.games_played) * 100)
@@ -103,7 +122,10 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
       {tab === "stats" ? (
         <StatsView lang={lang} />
       ) : !user ? (
-        <p className="ch-empty-note">{s.leaderboardLogin}</p>
+        <>
+          <p className="ch-empty-note">{s.leaderboardLogin}</p>
+          <GuestTeaser lang={lang} />
+        </>
       ) : loading ? (
         <p className="ch-empty-note">{s.loading}</p>
       ) : (
@@ -150,7 +172,13 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
               </div>
               <div className="ch-stats-row">
                 <span>
+                  📈 {chessStats.peak_rating} {s.peakRating}
+                </span>
+                <span>
                   🎯 {winRate}% {s.winRate}
+                </span>
+                <span>
+                  🔥 {streak} {s.dayStreak}
                 </span>
                 <span>
                   🎮 {chessStats.games_played} {s.gamesPlayed}
@@ -173,6 +201,18 @@ export function LeaderboardView({ lang }: { lang: Lang }) {
                   >
                     <span className="ch-lb-rank">
                       {RANK_MEDAL[rank] ?? `#${rank + 1}`}
+                    </span>
+                    <span className="ch-friend-avatar">
+                      {r.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={r.avatar_url}
+                          alt=""
+                          className="ch-friend-avatar-img"
+                        />
+                      ) : (
+                        (nameOf(r) || "?").slice(0, 1).toUpperCase()
+                      )}
                     </span>
                     <span className="ch-lb-main">
                       <strong>
