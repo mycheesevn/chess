@@ -19,6 +19,13 @@ import { PIECE_ART } from "./pieceArt";
 
 export type IconVariant = "rounded" | "bleed" | "maskable";
 
+/** Bump this whenever the icon artwork changes. Home-screen icons are
+ * snapshots (an installed shortcut never re-reads the icon), and the
+ * /pwa PNG routes are served with a 1-year immutable cache — the ONLY
+ * way existing devices ever fetch a new icon is a new URL, so every
+ * icon URL carries `?v=${ICON_VERSION}` (manifest + layout metadata). */
+export const ICON_VERSION = 2;
+
 const RED = '<polygon points="240,50 95,360 240,450" fill="#FF0000"/>';
 const BLUE = '<polygon points="255,105 398,368 255,453" fill="#0000FF"/>';
 

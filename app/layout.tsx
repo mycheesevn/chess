@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/components/chess/AuthProvider";
+import { ICON_VERSION } from "@/lib/chess/iconSvg";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
@@ -14,6 +15,17 @@ export const metadata: Metadata = {
     title: "Chess vs Computer",
     description: "Play international chess against the computer. 10 levels, EN/VI.",
     type: "website",
+  },
+  // Versioned icon URLs (see ICON_VERSION in lib/chess/iconSvg):
+  // home-screen shortcuts snapshot the icon at install time and the
+  // /pwa routes are immutable-cached, so a new artwork needs a new URL.
+  icons: {
+    icon: [
+      { url: `/icon.svg?v=${ICON_VERSION}`, type: "image/svg+xml" },
+      { url: `/pwa/icon-192.png?v=${ICON_VERSION}`, sizes: "192x192", type: "image/png" },
+      { url: `/pwa/icon-512.png?v=${ICON_VERSION}`, sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: `/pwa/apple-touch-icon.png?v=${ICON_VERSION}`, sizes: "180x180", type: "image/png" }],
   },
 };
 
