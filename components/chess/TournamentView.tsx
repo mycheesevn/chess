@@ -152,6 +152,9 @@ export function TournamentView({
                   <span className="ch-lb-name">{nameOf(s.player)}</span>
                   <span className="ch-lb-xp">
                     {s.score} {lang === "vi" ? "điểm" : "pts"}
+                    {" · "}
+                    {s.wins}
+                    {lang === "vi" ? " thắng" : "W"}
                   </span>
                 </li>
               ))}

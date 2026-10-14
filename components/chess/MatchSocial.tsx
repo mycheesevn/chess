@@ -18,10 +18,12 @@ export function MatchSocial({
   roomId,
   matchId,
   lang,
+  moveNumber,
 }: {
   roomId: string;
   matchId: string;
   lang: Lang;
+  moveNumber?: number | null;
 }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<RoomComment[]>([]);
@@ -54,7 +56,7 @@ export function MatchSocial({
     if (!body || !user) return;
     setDraft("");
     try {
-      await postComment(roomId, matchId, body);
+      await postComment(roomId, matchId, body, moveNumber ?? null);
       const fresh = await fetchComments(matchId);
       setComments(fresh);
     } catch {
@@ -103,7 +105,28 @@ export function MatchSocial({
       <div className="ch-comments">
         {comments.map((c) => (
           <div key={c.id} className="ch-comment">
-            <strong>{c.user_name}</strong>: {c.body}
+            {c.avatar_url ? (
+              <img src={c.avatar_url} alt="" className="ch-comment-avatar" />
+            ) : (
+              <span className="ch-comment-avatar ch-comment-avatar-fallback">♟</span>
+            )}
+            <div className="ch-comment-body">
+              <div className="ch-comment-meta">
+                <strong>{c.user_name}</strong>
+                {c.move_number != null && (
+                  <span className="ch-comment-move">
+                    {lang === "vi" ? `nước ${c.move_number}` : `move ${c.move_number}`}
+                  </span>
+                )}
+                <time className="ch-comment-time">
+                  {new Date(c.created_at).toLocaleString(
+                    lang === "vi" ? "vi-VN" : "en-US",
+                    { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }
+                  )}
+                </time>
+              </div>
+              <div>{c.body}</div>
+            </div>
           </div>
         ))}
       </div>

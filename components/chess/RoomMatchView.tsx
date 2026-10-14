@@ -33,10 +33,15 @@ import {
 import { useAuth } from "./AuthProvider";
 import { burstConfetti } from "@/lib/chess/confetti";
 import {
+  playApplause,
   playCapture,
   playCheck,
+  playCheckmateFanfare,
+  playLose,
   playMove,
+  playSadTrombone,
   playSelect,
+  playWin,
 } from "@/lib/chess/sound";
 import type {
   Board as BoardT,
@@ -135,6 +140,7 @@ export function RoomMatchView({
   hideSocial = false,
   namesOverride,
   onBackToRoom,
+  onExitRoom,
   onViewMatch,
 }: {
   roomId: string;
@@ -145,6 +151,7 @@ export function RoomMatchView({
   hideSocial?: boolean;
   namesOverride?: { white: string | null; black: string | null };
   onBackToRoom?: () => void;
+  onExitRoom?: () => void;
   onViewMatch?: (matchId: string) => void;
 }) {
   const s = STR[lang];
@@ -169,6 +176,11 @@ export function RoomMatchView({
   const finishedRef = useRef(false);
   const fightTimer = useRef<number | null>(null);
   const movesBoxRef = useRef<HTMLDivElement | null>(null);
+  /** Checkmate drama: banner + big shake + gold flash, once per match (PacClone parity). */
+  const [mateBannerKey, setMateBannerKey] = useState(0);
+  const [mateFxKey, setMateFxKey] = useState(0);
+  const [bigShakeKey, setBigShakeKey] = useState(0);
+  const celebratedMateRef = useRef<string | null>(null);
 
   /* ------------------------------ loading ------------------------------ */
   useEffect(() => {
@@ -329,8 +341,6 @@ export function RoomMatchView({
   useEffect(() => {
     if (!status.over || !match || match.status !== "active" || finishedRef.current) return;
     finishedRef.current = true;
-    if (status.kind === "checkmate" && myColor && status.winner === myColor)
-      burstConfetti();
     const result =
       status.kind === "checkmate"
         ? status.winner === "white"
@@ -339,6 +349,47 @@ export function RoomMatchView({
         : ("draw" as const);
     reportFinish(result, status.kind);
   }, [status, match, myColor, reportFinish]);
+
+  // Checkmate drama: banner + big board shake + gold flash + crowd sounds.
+  // Runs once per match for players and spectators alike (PacClone parity).
+  useEffect(() => {
+    if (
+      match?.status !== "finished" ||
+      match?.reason !== "checkmate" ||
+      celebratedMateRef.current === match?.id
+    ) {
+      return;
+    }
+    celebratedMateRef.current = match.id;
+    setBigShakeKey((k) => k + 1);
+    setMateFxKey((k) => k + 1);
+    setMateBannerKey((k) => k + 1);
+    window.setTimeout(() => setMateFxKey(0), 1300);
+    const iWon = match.winner_id === user?.id;
+    if (iWon) {
+      window.setTimeout(() => {
+        playCheckmateFanfare();
+        burstConfetti();
+      }, 450);
+      window.setTimeout(() => playApplause(), 1700);
+    } else if (myColor) {
+      window.setTimeout(() => playSadTrombone(), 450);
+    } else {
+      // Spectator: celebrate the winner with fanfare + applause.
+      window.setTimeout(() => playCheckmateFanfare(), 450);
+      window.setTimeout(() => playApplause(), 1700);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match?.status, match?.reason, match?.id]);
+
+  // Non-checkmate finishes: win/lose jingles for the players.
+  useEffect(() => {
+    if (match?.status === "finished" && myColor && match?.reason !== "checkmate") {
+      if (match.winner_id === user?.id) playWin();
+      else playLose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match?.status, match?.reason, match?.id]);
 
   const doMove = useCallback(
     async (move: Move) => {
@@ -497,6 +548,63 @@ export function RoomMatchView({
 
   return (
     <div className="ch-room-match">
+      <div className="ch-room-match-main">
+        <div className="ch-board-area">
+          <div
+            key={`room-board-${bigShakeKey}`}
+            className={`ch-board-fit${bigShakeKey > 0 ? " shake-big" : ""}`}
+          >
+            <Board
+              board={bs.board}
+              flipped={myColor === "black"}
+              selected={selected}
+              targets={targets}
+              lastMove={bs.lastMove}
+              checkAt={checkAt}
+              checkKey={plyCount}
+              checkBadge={s.checkBadge}
+              fight={fight}
+              interactive={!!myColor && bs.turn === myColor && !status.over && isActive}
+              boardLabel={`${names.white} vs ${names.black}`}
+              onSquareClick={onSquareClick}
+            />
+            {mateBannerKey > 0 && (
+              <div
+                key={mateBannerKey}
+                className="ch-mate-banner"
+                onAnimationEnd={() => setMateBannerKey(0)}
+              >
+                <span>♚ {lang === "vi" ? "Chiếu hết!" : "Checkmate!"}</span>
+              </div>
+            )}
+            {mateFxKey > 0 && <div key={mateFxKey} className="ch-mate-flash" />}
+            {pendingPromo && (
+              <div className="ch-promo-overlay">
+                <div className="ch-promo-dialog">
+                  <div className="ch-promo-choices">
+                    {PROMO_CHOICES.map((pt) => (
+                      <button
+                        key={pt}
+                        type="button"
+                        onClick={() => doMove({ ...pendingPromo, promotion: pt })}
+                      >
+                        <svg viewBox="0 0 100 100" className="ch-promo-piece" aria-hidden="true">
+                          <VectorPiece type={pt} color={myColor ?? "white"} />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <aside className="ch-panel ch-room-side">
+          {onExitRoom && (
+            <button type="button" className="ch-btn ch-btn-sm ch-room-exit" onClick={onExitRoom}>
+              ← {lang === "vi" ? "Danh sách phòng" : "Room list"}
+            </button>
+          )}
       <div className="ch-room-vs">
         <span>⚪ {names.white}</span>
         <span className="ch-room-vs-mid">vs</span>
@@ -613,44 +721,6 @@ export function RoomMatchView({
         </div>
       )}
 
-      <div className="ch-board-area">
-        <div className="ch-board-fit">
-          <Board
-            board={bs.board}
-            flipped={myColor === "black"}
-            selected={selected}
-            targets={targets}
-            lastMove={bs.lastMove}
-            checkAt={checkAt}
-            checkKey={plyCount}
-            checkBadge={s.checkBadge}
-            fight={fight}
-            interactive={!!myColor && bs.turn === myColor && !status.over && isActive}
-            boardLabel={`${names.white} vs ${names.black}`}
-            onSquareClick={onSquareClick}
-          />
-          {pendingPromo && (
-            <div className="ch-promo-overlay">
-              <div className="ch-promo-dialog">
-                <div className="ch-promo-choices">
-                  {PROMO_CHOICES.map((pt) => (
-                    <button
-                      key={pt}
-                      type="button"
-                      onClick={() => doMove({ ...pendingPromo, promotion: pt })}
-                    >
-                      <svg viewBox="0 0 100 100" className="ch-promo-piece" aria-hidden="true">
-                        <VectorPiece type={pt} color={myColor ?? "white"} />
-                      </svg>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
       {sans.length > 0 && (
         <div className="ch-room-moves" ref={movesBoxRef}>
           {Array.from({ length: Math.ceil(sans.length / 2) }, (_, i) => (
@@ -663,7 +733,9 @@ export function RoomMatchView({
         </div>
       )}
 
-      {!hideSocial && <MatchSocial roomId={roomId} matchId={match.id} lang={lang} />}
+      {!hideSocial && <MatchSocial roomId={roomId} matchId={match.id} lang={lang} moveNumber={plyCount} />}
+        </aside>
+      </div>
     </div>
   );
 }

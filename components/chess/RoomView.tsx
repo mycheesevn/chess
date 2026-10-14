@@ -28,13 +28,22 @@ import {
   type Room,
   type RoomMatch,
   type RoomMember,
+  type RoomWithCount,
 } from "@/lib/supabase/rooms";
 import { useAuth } from "./AuthProvider";
 import { GuestRooms } from "./GuestRooms";
 import { RoomMatchView, reasonLabel } from "./RoomMatchView";
 import { TournamentView } from "./TournamentView";
+import { FriendButton } from "./FriendButton";
+import { listFriends } from "@/lib/supabase/friends";
 import { Pagination, usePagination } from "./Pagination";
 import type { Lang } from "@/lib/chess/types";
+import { STR } from "@/lib/chess/i18n";
+import {
+  renderRoomPromoCard,
+  canvasToPngBlob,
+  shareCard,
+} from "@/lib/chess/shareCard";
 
 const MAX_PLAYER_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12, 16, 20];
 
@@ -88,7 +97,7 @@ export function RoomView({
   onRequireLogin?: () => void;
 }) {
   const { user } = useAuth();
-  const [myRooms, setMyRooms] = useState<Room[]>([]);
+  const [myRooms, setMyRooms] = useState<RoomWithCount[]>([]);
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [hotRooms, setHotRooms] = useState<HotRoom[]>([]);
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
@@ -267,7 +276,8 @@ export function RoomView({
       <div className="ch-room-form">
         <input
           value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+          onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+          onKeyDown={(e) => e.key === "Enter" && doJoin()}
           placeholder={lang === "vi" ? "Nhập mã phòng" : "Enter room code"}
           className="ch-input"
           maxLength={6}
@@ -291,7 +301,10 @@ export function RoomView({
                   {r.name}
                   {r.status === "closed" ? (lang === "vi" ? " (đã đóng)" : " (closed)") : ""}
                 </span>
-                <code>{r.code}</code>
+                <span className="ch-hint">
+                  👥 {r.member_count}/{r.max_players}
+                  <code>{r.code}</code>
+                </span>
               </button>
             </li>
           ))}
@@ -365,6 +378,7 @@ function RoomDetail({
   const { user } = useAuth();
   const [room, setRoom] = useState<Room>(initialRoom);
   const [members, setMembers] = useState<RoomMember[]>([]);
+  const [following, setFollowing] = useState<Set<string>>(new Set());
   const [past, setPast] = useState<RoomMatch[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [viewMatchId, setViewMatchId] = useState<string | null>(null);
@@ -373,6 +387,7 @@ function RoomDetail({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
+  const [promoting, setPromoting] = useState(false);
   const [rulesDraft, setRulesDraft] = useState(initialRoom.rules ?? "");
   const [rulesSaved, setRulesSaved] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -442,6 +457,14 @@ function RoomDetail({
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Following set for the per-member follow buttons (PacClone parity).
+  useEffect(() => {
+    if (!user) return;
+    listFriends()
+      .then((rows) => setFollowing(new Set(rows.map((r) => r.id))))
+      .catch(() => {});
+  }, [user]);
 
   // Realtime nudges + 4s polling fallback (realtime can silently fail).
   useEffect(() => {
@@ -529,6 +552,34 @@ function RoomDetail({
     }
   };
 
+  /** Generate a promo image card and open the native share sheet (PacClone pattern). */
+  const promoteRoom = async () => {
+    if (promoting) return;
+    setPromoting(true);
+    try {
+      const link = `${window.location.origin}/?room=${room.code}`;
+      const canvas = renderRoomPromoCard({
+        roomName: room.name,
+        code: room.code,
+        memberLine: STR[lang].roomPromoMembers(members.length),
+        footer: STR[lang].roomPromoFooter,
+        lang,
+      });
+      const blob = await canvasToPngBlob(canvas);
+      await shareCard(
+        blob,
+        room.name,
+        `${room.name}\n${STR[lang].roomPromoCodeLabel}: ${room.code}`,
+        link,
+        `phong-${room.code}.png`
+      );
+    } catch {
+      /* user cancelled or share failed */
+    } finally {
+      setPromoting(false);
+    }
+  };
+
   /* Viewing a match takes over the detail (PacClone pattern); the
      finished match stays until "Back to room". */
   if (viewMatchId) {
@@ -541,6 +592,7 @@ function RoomDetail({
           lang={lang}
           isLeader={isLeader}
           onBackToRoom={() => setViewMatchId(null)}
+          onExitRoom={onExit}
           onViewMatch={(id) => setViewMatchId(id)}
         />
       </div>
@@ -586,6 +638,14 @@ function RoomDetail({
           >
             {copied === "link" ? (lang === "vi" ? "Đã chép!" : "Copied!") : `🔗 ${lang === "vi" ? "Chép link mời" : "Copy invite link"}`}
           </button>
+          <button
+            type="button"
+            className="ch-btn ch-btn-sm"
+            onClick={promoteRoom}
+            disabled={promoting}
+          >
+            📣 {promoting ? "…" : STR[lang].roomPromote}
+          </button>
           {isLeader && room.status !== "closed" && (
             <button
               type="button"
@@ -617,7 +677,19 @@ function RoomDetail({
         </div>
       ) : isLeader && room.status !== "closed" ? (
         <div className="ch-row-gap">
-          <button type="button" className="ch-btn ch-btn-primary" disabled={busy} onClick={doStart}>
+          <button
+            type="button"
+            className="ch-btn ch-btn-primary"
+            disabled={busy || orderPreview.length < 2}
+            onClick={doStart}
+            title={
+              orderPreview.length < 2
+                ? lang === "vi"
+                  ? "Cần ít nhất 2 người chơi trong thứ tự thi đấu."
+                  : "Need at least 2 players in the match order."
+                : undefined
+            }
+          >
             ▶ {lang === "vi" ? "Bắt đầu ván mới" : "Start match"}
           </button>
           {nextPair && (
@@ -716,6 +788,21 @@ function RoomDetail({
                       ? "Khán giả"
                       : "Spectator"}
                 </span>
+                {!isMe && user && (
+                  <FriendButton
+                    lang={lang}
+                    userId={m.user_id}
+                    following={following}
+                    onChanged={(uid, nowFollowing) =>
+                      setFollowing((prev) => {
+                        const next = new Set(prev);
+                        if (nowFollowing) next.add(uid);
+                        else next.delete(uid);
+                        return next;
+                      })
+                    }
+                  />
+                )}
                 {isLeader && !isMe && (
                   <span className="ch-member-controls">
                     {m.role === "player" && (

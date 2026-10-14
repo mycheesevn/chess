@@ -465,6 +465,46 @@ function CorrBoard({
         ← {lang === "vi" ? "Danh sách" : "Games"}
       </button>
       <div className="ch-room-match">
+        <div className="ch-room-match-main">
+          <div className="ch-board-area">
+            <div className="ch-board-fit">
+              <Board
+                board={bs.board}
+                flipped={myColor === "black"}
+                selected={selected}
+                targets={targets}
+                lastMove={bs.lastMove}
+                checkAt={checkAt}
+                checkKey={0}
+                checkBadge=""
+                fight={null}
+                interactive={!!myColor && bs.turn === myColor && !status.over}
+                boardLabel=""
+                onSquareClick={onSquareClick}
+              />
+              {pendingPromo && (
+                <div className="ch-promo-overlay">
+                  <div className="ch-promo-dialog">
+                    <div className="ch-promo-choices">
+                      {PROMO_CHOICES.map((pt) => (
+                        <button
+                          key={pt}
+                          type="button"
+                          onClick={() => doMove({ ...pendingPromo, promotion: pt })}
+                        >
+                          {pt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <aside className="ch-panel ch-room-side">
+            <button type="button" className="ch-btn ch-btn-sm ch-room-exit" onClick={onBack}>
+              ← {lang === "vi" ? "Danh sách" : "Games"}
+            </button>
         <div className="ch-room-status">
           {status.over || game.status === "finished" ? (
             <span>
@@ -487,41 +527,6 @@ function CorrBoard({
             </span>
           )}
         </div>
-        <div className="ch-board-area">
-          <div className="ch-board-fit">
-            <Board
-              board={bs.board}
-              flipped={myColor === "black"}
-              selected={selected}
-              targets={targets}
-              lastMove={bs.lastMove}
-              checkAt={checkAt}
-              checkKey={0}
-              checkBadge=""
-              fight={null}
-              interactive={!!myColor && bs.turn === myColor && !status.over}
-              boardLabel=""
-              onSquareClick={onSquareClick}
-            />
-            {pendingPromo && (
-              <div className="ch-promo-overlay">
-                <div className="ch-promo-dialog">
-                  <div className="ch-promo-choices">
-                    {PROMO_CHOICES.map((pt) => (
-                      <button
-                        key={pt}
-                        type="button"
-                        onClick={() => doMove({ ...pendingPromo, promotion: pt })}
-                      >
-                        {pt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
         {game.status === "active" && !status.over && (
           <div className="ch-room-form">
             <button
@@ -534,6 +539,8 @@ function CorrBoard({
             </button>
           </div>
         )}
+          </aside>
+        </div>
       </div>
     </div>
   );
