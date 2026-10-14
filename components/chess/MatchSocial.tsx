@@ -5,14 +5,14 @@ import {
   fetchCommentAuthor,
   fetchComments,
   postComment,
-  sendReaction,
   subscribeComments,
   type RoomComment,
 } from "@/lib/supabase/comments";
 import { useAuth } from "./AuthProvider";
 import type { Lang } from "@/lib/chess/types";
 
-const EMOJIS = ["👏", "🔥", "😱", "👍", "😮"];
+/** Comments only — the reaction bar lives in RoomMatchView's actions row
+ *  directly under the board (PacClone anatomy), not in this panel. */
 
 export function MatchSocial({
   roomId,
@@ -32,7 +32,6 @@ export function MatchSocial({
   const [comments, setComments] = useState<RoomComment[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [lastSent, setLastSent] = useState(0);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
 
@@ -82,36 +81,8 @@ export function MatchSocial({
     }
   };
 
-  const doReact = async (emoji: string) => {
-    if (!user) return;
-    const now = Date.now();
-    if (now - lastSent < 1500) return; // throttle
-    setLastSent(now);
-    try {
-      await sendReaction(roomId, matchId, emoji);
-    } catch {
-      /* ignore */
-    }
-  };
-
   return (
     <div className="ch-social">
-      {user ? (
-        <div className="ch-reaction-bar">
-          {EMOJIS.map((e) => (
-            <button key={e} type="button" onClick={() => doReact(e)}>
-              {e}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="ch-hint">
-          {lang === "vi"
-            ? "Đăng nhập để reaction và bình luận."
-            : "Sign in to react and comment."}
-        </p>
-      )}
-
       <div className="ch-comments" ref={feedRef} onScroll={onScroll}>
         <h4 className="ch-hint">
           💬 {lang === "vi" ? "Bình luận" : "Comments"} ({comments.length})

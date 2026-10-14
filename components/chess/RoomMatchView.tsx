@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Board, type FightAnim } from "./Board";
 import { VectorPiece } from "./Pieces";
 import { MatchSocial } from "./MatchSocial";
-import { subscribeReactions } from "@/lib/supabase/comments";
+import { sendReaction, subscribeReactions } from "@/lib/supabase/comments";
 import { notifyPushTrigger } from "@/lib/push/client";
 import {
   applyMove,
@@ -144,6 +144,7 @@ export function RoomMatchView({
   onBackToRoom,
   onExitRoom,
   onViewMatch,
+  onRequireLogin,
 }: {
   roomId: string;
   matchId: string | null;
@@ -157,6 +158,8 @@ export function RoomMatchView({
   onBackToRoom?: () => void;
   onExitRoom?: () => void;
   onViewMatch?: (matchId: string) => void;
+  /** Guests: tapping the react teaser asks the host to open login. */
+  onRequireLogin?: () => void;
 }) {
   const s = STR[lang];
   const { user } = useAuth();
@@ -207,6 +210,23 @@ export function RoomMatchView({
       ch.unsubscribe();
     };
   }, [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* The reaction bar itself lives in the actions row directly under the
+   * board (PacClone anatomy) — NOT in the side panel. Sending is throttled;
+   * the floater appears via the realtime echo above, for the sender too. */
+  const REACTION_EMOJIS = ["👏", "🔥", "😱", "👍", "😮"];
+  const lastReactRef = useRef(0);
+  const doReact = async (emoji: string) => {
+    if (!user || !match) return;
+    const now = Date.now();
+    if (now - lastReactRef.current < 1500) return; // throttle
+    lastReactRef.current = now;
+    try {
+      await sendReaction(roomId, match.id, emoji);
+    } catch {
+      /* ignore */
+    }
+  };
 
   /* ------------------------------ loading ------------------------------ */
   useEffect(() => {
@@ -580,6 +600,7 @@ export function RoomMatchView({
   return (
     <div className="ch-room-match">
       <div className="ch-room-match-main">
+        <div className="ch-room-board-col">
         <div className="ch-board-area">
           <div
             key={`room-board-${bigShakeKey}`}
@@ -639,6 +660,82 @@ export function RoomMatchView({
               </div>
             )}
           </div>
+        </div>
+        {isActive && !status.over && (
+          <div className="ch-room-match-actions">
+            {user && !guest && (
+              <div
+                className="ch-reaction-bar"
+                role="group"
+                aria-label={lang === "vi" ? "Thả biểu tượng" : "React"}
+              >
+                {REACTION_EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    className="ch-reaction-btn"
+                    onClick={() => doReact(e)}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+            {guest && onRequireLogin && (
+              <button type="button" className="ch-btn ch-btn-sm" onClick={onRequireLogin}>
+                👏🔥 {lang === "vi" ? "Đăng nhập để thả biểu tượng" : "Log in to react"}
+              </button>
+            )}
+            {myColor &&
+              (armResign ? (
+                <button
+                  type="button"
+                  className="ch-btn ch-btn-sm ch-btn-danger"
+                  onClick={() => {
+                    setArmResign(false);
+                    doResign();
+                  }}
+                >
+                  {lang === "vi" ? "Xác nhận đầu hàng?" : "Confirm resignation?"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="ch-btn ch-btn-sm"
+                  onClick={() => {
+                    setArmResign(true);
+                    window.setTimeout(() => setArmResign(false), 3000);
+                  }}
+                >
+                  🏳 {lang === "vi" ? "Đầu hàng" : "Resign"}
+                </button>
+              ))}
+            {isLeader &&
+              (armCancel ? (
+                <button
+                  type="button"
+                  className="ch-btn ch-btn-sm ch-btn-danger"
+                  onClick={() => {
+                    setArmCancel(false);
+                    doCancel();
+                  }}
+                >
+                  {lang === "vi" ? "Xác nhận hủy ván?" : "Confirm cancel?"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="ch-btn ch-btn-sm"
+                  onClick={() => {
+                    setArmCancel(true);
+                    window.setTimeout(() => setArmCancel(false), 3000);
+                  }}
+                >
+                  ✕ {lang === "vi" ? "Hủy ván" : "Cancel match"}
+                </button>
+              ))}
+          </div>
+        )}
         </div>
         <aside className="ch-panel ch-room-side">
           {onExitRoom && (
@@ -728,59 +825,6 @@ export function RoomMatchView({
             )}
           </div>
           {actionMsg && <p className="ch-msg">{actionMsg}</p>}
-        </div>
-      )}
-
-      {isActive && !status.over && (myColor || isLeader) && (
-        <div className="ch-row-gap">
-          {myColor &&
-            (armResign ? (
-              <button
-                type="button"
-                className="ch-btn ch-btn-sm ch-btn-danger"
-                onClick={() => {
-                  setArmResign(false);
-                  doResign();
-                }}
-              >
-                {lang === "vi" ? "Xác nhận đầu hàng?" : "Confirm resignation?"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="ch-btn ch-btn-sm"
-                onClick={() => {
-                  setArmResign(true);
-                  window.setTimeout(() => setArmResign(false), 3000);
-                }}
-              >
-                🏳 {lang === "vi" ? "Đầu hàng" : "Resign"}
-              </button>
-            ))}
-          {isLeader &&
-            (armCancel ? (
-              <button
-                type="button"
-                className="ch-btn ch-btn-sm ch-btn-danger"
-                onClick={() => {
-                  setArmCancel(false);
-                  doCancel();
-                }}
-              >
-                {lang === "vi" ? "Xác nhận hủy ván?" : "Confirm cancel?"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="ch-btn ch-btn-sm"
-                onClick={() => {
-                  setArmCancel(true);
-                  window.setTimeout(() => setArmCancel(false), 3000);
-                }}
-              >
-                ✕ {lang === "vi" ? "Hủy ván" : "Cancel match"}
-              </button>
-            ))}
         </div>
       )}
 

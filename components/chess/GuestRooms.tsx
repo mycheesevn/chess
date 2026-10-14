@@ -101,6 +101,7 @@ export function GuestRooms({
               lang={lang}
               guest
               hideSocial
+              onRequireLogin={onRequireLogin}
               namesOverride={{
                 white: detail.active_match.white_name,
                 black: detail.active_match.black_name,
