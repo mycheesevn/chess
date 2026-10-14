@@ -253,7 +253,7 @@ export async function fetchRoomMembers(roomId: string): Promise<RoomMember[]> {
   const { data, error } = await supabase
     .from("chess_room_members")
     .select(
-      "user_id, role, joined_at, user:profiles(full_name, username, email, avatar_url)"
+      "user_id, role, joined_at, user:profiles(full_name, username, avatar_url)"
     )
     .eq("room_id", roomId)
     .order("joined_at", { ascending: true });
@@ -266,7 +266,6 @@ export async function fetchRoomMembers(roomId: string): Promise<RoomMember[]> {
       user: {
         full_name: string | null;
         username: string | null;
-        email: string | null;
         avatar_url: string | null;
       } | null;
     }>
@@ -288,14 +287,13 @@ export async function fetchNames(
   const supabase = createClient();
   const { data } = await supabase
     .from("profiles")
-    .select("id, full_name, username, email")
+    .select("id, full_name, username")
     .in("id", unique);
   const out: Record<string, string> = {};
   for (const p of (data ?? []) as Array<{
     id: string;
     full_name: string | null;
     username: string | null;
-    email: string | null;
   }>) {
     out[p.id] = displayName(p);
   }

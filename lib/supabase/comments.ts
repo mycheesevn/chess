@@ -67,6 +67,28 @@ export async function sendReaction(
   });
 }
 
+/** Fetch a comment author's display info (avatars + names for
+ *  realtime comment rows, which arrive without the profile join). */
+export async function fetchCommentAuthor(
+  userId: string
+): Promise<{ user_name: string; avatar_url: string | null }> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("full_name, username, avatar_url")
+    .eq("id", userId)
+    .single();
+  const p = (data ?? {}) as {
+    full_name?: string | null;
+    username?: string | null;
+    avatar_url?: string | null;
+  };
+  return {
+    user_name: p.full_name || p.username || "Player",
+    avatar_url: p.avatar_url ?? null,
+  };
+}
+
 export function subscribeComments(
   matchId: string,
   onNew: (c: RoomComment) => void

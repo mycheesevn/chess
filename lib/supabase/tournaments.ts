@@ -66,7 +66,7 @@ export function standings(t: Tournament): Array<{ player: string; score: number;
   }
   return [...scores.entries()]
     .map(([player, s]) => ({ player, score: s.score, wins: s.wins, played: s.played }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || b.wins - a.wins);
 }
 
 /** Start the next unplayed pairing as a live match (leader, via RPC).
