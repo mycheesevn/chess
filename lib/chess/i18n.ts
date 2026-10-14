@@ -125,6 +125,20 @@ export interface Strings {
   libCelebration: string;
   libNextLesson: string;
   libBackToLibrary: string;
+  /* Profile modal */
+  profile: string;
+  profileFullName: string;
+  profileAvatarAlt: string;
+  profileAvatarChange: string;
+  profileAvatarUploading: string;
+  profileUsername: string;
+  profileEmail: string;
+  profileMemberSince: string;
+  profileRating: string;
+  profileGames: string;
+  profileWins: string;
+  profileSave: string;
+  profileSaved: string;
 }
 
 /** Piece letters for SAN notation. */
@@ -270,6 +284,20 @@ export const STR: Record<Lang, Strings> = {
     libCelebration: "Lesson complete! Your progress has been saved.",
     libNextLesson: "Next lesson →",
     libBackToLibrary: "Back to library",
+    /* Profile modal */
+    profile: "Profile",
+    profileFullName: "Display name",
+    profileAvatarAlt: "Avatar",
+    profileAvatarChange: "Change avatar",
+    profileAvatarUploading: "Uploading…",
+    profileUsername: "Username",
+    profileEmail: "Email",
+    profileMemberSince: "Member since",
+    profileRating: "Elo",
+    profileGames: "Games",
+    profileWins: "Wins",
+    profileSave: "Save",
+    profileSaved: "Profile saved!",
   },
   vi: {
     title: "♞ Cờ Vua",
@@ -403,6 +431,20 @@ export const STR: Record<Lang, Strings> = {
     libCelebration: "Hoàn thành bài học! Tiến độ của bạn đã được lưu.",
     libNextLesson: "Bài tiếp theo →",
     libBackToLibrary: "Về thư viện",
+    /* Profile modal */
+    profile: "Hồ sơ",
+    profileFullName: "Tên hiển thị",
+    profileAvatarAlt: "Ảnh đại diện",
+    profileAvatarChange: "Đổi ảnh đại diện",
+    profileAvatarUploading: "Đang tải ảnh…",
+    profileUsername: "Tên đăng nhập",
+    profileEmail: "Email",
+    profileMemberSince: "Thành viên từ",
+    profileRating: "Elo",
+    profileGames: "Ván đấu",
+    profileWins: "Thắng",
+    profileSave: "Lưu",
+    profileSaved: "Đã lưu hồ sơ!",
   },
 };
 
