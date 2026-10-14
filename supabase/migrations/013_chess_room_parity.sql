@@ -571,31 +571,35 @@ begin
     'members', coalesce((
       select jsonb_agg(jsonb_build_object(
         'name', coalesce(nullif(p.full_name, ''), nullif(p.username, ''),
-                         split_part(p.email, '@', 1), 'Player'),
+                         split_part(u.email, '@', 1), 'Player'),
         'role', m.role) order by m.joined_at)
       from chess_room_members m join profiles p on p.id = m.user_id
+      left join auth.users u on u.id = p.id
       where m.room_id = p_room_id), '[]'::jsonb),
     'active_match', case when v_match.id is null then null else jsonb_build_object(
       'id', v_match.id,
       'white_id', v_match.white_id,
       'black_id', v_match.black_id,
-      'white_name', (select coalesce(nullif(full_name, ''), nullif(username, ''),
-                             split_part(email, '@', 1), 'Player')
-                     from profiles where id = v_match.white_id),
-      'black_name', (select coalesce(nullif(full_name, ''), nullif(username, ''),
-                             split_part(email, '@', 1), 'Player')
-                     from profiles where id = v_match.black_id),
+      'white_name', (select coalesce(nullif(p.full_name, ''), nullif(p.username, ''),
+                             split_part(u.email, '@', 1), 'Player')
+                     from profiles p left join auth.users u on u.id = p.id
+                     where p.id = v_match.white_id),
+      'black_name', (select coalesce(nullif(p.full_name, ''), nullif(p.username, ''),
+                             split_part(u.email, '@', 1), 'Player')
+                     from profiles p left join auth.users u on u.id = p.id
+                     where p.id = v_match.black_id),
       'moves', v_match.moves,
       'status', v_match.status) end,
     'comments', coalesce((
       select jsonb_agg(c order by created_at desc) from (
         select jsonb_build_object(
           'user_name', coalesce(nullif(p.full_name, ''), nullif(p.username, ''),
-                                split_part(p.email, '@', 1), 'Player'),
+                                split_part(u.email, '@', 1), 'Player'),
           'body', cm.body,
           'created_at', cm.created_at) as c,
           cm.created_at
         from chess_room_comments cm join profiles p on p.id = cm.user_id
+        left join auth.users u on u.id = p.id
         where cm.room_id = p_room_id
         order by cm.created_at desc limit 20) t), '[]'::jsonb)
   ) into v_result;
