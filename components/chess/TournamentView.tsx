@@ -40,6 +40,8 @@ export function TournamentView({
   names,
   reloadSignal,
   onViewMatch,
+  playersCount,
+  onOpenTournamentChange,
 }: {
   roomId: string;
   isLeader: boolean;
@@ -47,6 +49,10 @@ export function TournamentView({
   names: Record<string, string>;
   reloadSignal?: number;
   onViewMatch?: (matchId: string) => void;
+  /** Players in the match order — create is gated at 3+ (PacClone pattern). */
+  playersCount?: number;
+  /** Reports whether any tournament is open (hides the casual start button). */
+  onOpenTournamentChange?: (open: boolean) => void;
 }) {
   const { user } = useAuth();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -56,7 +62,12 @@ export function TournamentView({
   const [confirmEnd, setConfirmEnd] = useState<string | null>(null);
 
   const load = () => {
-    listTournaments(roomId).then(setTournaments).catch(() => {});
+    listTournaments(roomId)
+      .then((ts) => {
+        setTournaments(ts);
+        onOpenTournamentChange?.(ts.some((t) => t.status === "open"));
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -67,17 +78,18 @@ export function TournamentView({
 
   const nameOf = (id: string) => names[id] ?? "Player";
   const hasOpen = tournaments.some((t) => t.status === "open");
+  const enoughPlayers = (playersCount ?? 0) >= 3;
 
   const doCreate = async () => {
     setMsg("");
     setBusy(true);
     try {
-      const t = await createTournament(
+      await createTournament(
         roomId,
         name.trim() || (lang === "vi" ? "Giải đấu" : "Tournament")
       );
       setName("");
-      setTournaments([t, ...tournaments]);
+      load(); // refetch + report open state to the room detail
     } catch (e) {
       setMsg(errText(roomErrorKey(e), lang));
     } finally {
@@ -123,7 +135,13 @@ export function TournamentView({
             placeholder={lang === "vi" ? "Tên giải" : "Tournament name"}
             className="ch-input"
           />
-          <button type="button" className="ch-btn ch-btn-sm" disabled={busy} onClick={doCreate}>
+          <button
+            type="button"
+            className="ch-btn ch-btn-sm"
+            disabled={busy || !enoughPlayers}
+            onClick={doCreate}
+            title={enoughPlayers ? undefined : errText("not_enough_players", lang)}
+          >
             {lang === "vi" ? "Tạo giải" : "Create"}
           </button>
         </div>

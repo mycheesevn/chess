@@ -139,6 +139,7 @@ export function RoomMatchView({
   guest = false,
   hideSocial = false,
   namesOverride,
+  roomCode,
   onBackToRoom,
   onExitRoom,
   onViewMatch,
@@ -150,6 +151,8 @@ export function RoomMatchView({
   guest?: boolean;
   hideSocial?: boolean;
   namesOverride?: { white: string | null; black: string | null };
+  /** Room invite code — appended to the share-result text (PacClone pattern). */
+  roomCode?: string | null;
   onBackToRoom?: () => void;
   onExitRoom?: () => void;
   onViewMatch?: (matchId: string) => void;
@@ -207,7 +210,8 @@ export function RoomMatchView({
         // Accept status changes even with equal moves (finish/cancel).
         if (remote >= local || m.status !== matchRef.current?.status) setMatch(m);
       },
-      { onPresence: guest ? undefined : setViewerCount, userId: user?.id }
+      // Guests count as viewers too (PacClone pattern; identity falls back to "guest").
+      { onPresence: setViewerCount, userId: user?.id }
     );
     return () => {
       ch.unsubscribe();
@@ -464,7 +468,11 @@ export function RoomMatchView({
           : `⚫ ${names.black} ${lang === "vi" ? "thắng" : "wins"}`;
     const text = `♟ ${names.white} vs ${names.black} — ${winnerText}${
       match.reason ? ` (${reasonLabel(match.reason, lang)})` : ""
-    } · ${plyCount} ${lang === "vi" ? "nước" : "plies"}`;
+    } · ${plyCount} ${lang === "vi" ? "nước" : "plies"}${
+      roomCode
+        ? ` · ${lang === "vi" ? "Mã phòng" : "Room code"}: ${roomCode} — ${window.location.origin}/?room=${roomCode}`
+        : ""
+    }`;
     try {
       await navigator.clipboard.writeText(text);
       setShared(true);
@@ -472,7 +480,7 @@ export function RoomMatchView({
     } catch {
       /* clipboard unavailable */
     }
-  }, [match, names, isCancelled, plyCount, lang]);
+  }, [match, names, isCancelled, plyCount, lang, roomCode]);
 
   /* ------------------------------ board input ------------------------------ */
   const targets = useMemo(
@@ -605,6 +613,11 @@ export function RoomMatchView({
               ← {lang === "vi" ? "Danh sách phòng" : "Room list"}
             </button>
           )}
+          {onBackToRoom && !isFinished && !isCancelled && (
+            <button type="button" className="ch-btn ch-btn-sm" onClick={onBackToRoom}>
+              ← {lang === "vi" ? "Về phòng" : "Back to room"}
+            </button>
+          )}
       <div className="ch-room-vs">
         <span>⚪ {names.white}</span>
         <span className="ch-room-vs-mid">vs</span>
@@ -635,6 +648,23 @@ export function RoomMatchView({
 
       {(isFinished || isCancelled) && (
         <div className="ch-result-panel">
+          {isFinished && (
+            <p className="ch-result-title">
+              {match.result === "draw"
+                ? lang === "vi"
+                  ? "🤝 Hòa!"
+                  : "🤝 Draw!"
+                : `🏆 ${match.result === "white" ? names.white : names.black} ${
+                    lang === "vi" ? "thắng!" : "wins!"
+                  }`}
+              {match.reason && !isCancelled ? ` · ${reasonLabel(match.reason, lang)}` : ""}
+            </p>
+          )}
+          {isCancelled && (
+            <p className="ch-result-title">
+              {lang === "vi" ? "Ván đấu đã bị hủy." : "This match was cancelled."}
+            </p>
+          )}
           {xpTotal > 0 && (
             <p className="ch-xp-earned">
               ⭐ {lang === "vi" ? `Bạn nhận +${xpTotal} XP` : `You earned +${xpTotal} XP`}
@@ -733,7 +763,15 @@ export function RoomMatchView({
         </div>
       )}
 
-      {!hideSocial && <MatchSocial roomId={roomId} matchId={match.id} lang={lang} moveNumber={plyCount} />}
+      {!hideSocial && (
+        <MatchSocial
+          roomId={roomId}
+          matchId={match.id}
+          lang={lang}
+          moveNumber={plyCount}
+          disabled={isCancelled}
+        />
+      )}
         </aside>
       </div>
     </div>
