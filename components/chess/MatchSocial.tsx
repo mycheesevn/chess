@@ -7,7 +7,6 @@ import {
   postComment,
   sendReaction,
   subscribeComments,
-  subscribeReactions,
   type RoomComment,
 } from "@/lib/supabase/comments";
 import { useAuth } from "./AuthProvider";
@@ -33,9 +32,7 @@ export function MatchSocial({
   const [comments, setComments] = useState<RoomComment[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [floaters, setFloaters] = useState<{ id: number; emoji: string }[]>([]);
   const [lastSent, setLastSent] = useState(0);
-  const floaterId = useRef(0);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
 
@@ -64,17 +61,8 @@ export function MatchSocial({
       }
       setComments((prev) => (prev.some((x) => x.id === row.id) ? prev : [...prev, row]));
     });
-    const rc = subscribeReactions(matchId, (emoji) => {
-      const id = ++floaterId.current;
-      setFloaters((prev) => [...prev, { id, emoji }]);
-      window.setTimeout(
-        () => setFloaters((prev) => prev.filter((f) => f.id !== id)),
-        2000
-      );
-    });
     return () => {
       cc.unsubscribe();
-      rc.unsubscribe();
     };
   }, [matchId]);
 
@@ -108,14 +96,6 @@ export function MatchSocial({
 
   return (
     <div className="ch-social">
-      <div className="ch-floaters" aria-hidden="true">
-        {floaters.map((f) => (
-          <span key={f.id} className="ch-floater">
-            {f.emoji}
-          </span>
-        ))}
-      </div>
-
       {user ? (
         <div className="ch-reaction-bar">
           {EMOJIS.map((e) => (

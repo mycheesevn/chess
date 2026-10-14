@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Board, type FightAnim } from "./Board";
 import { VectorPiece } from "./Pieces";
 import { MatchSocial } from "./MatchSocial";
+import { subscribeReactions } from "@/lib/supabase/comments";
 import { notifyPushTrigger } from "@/lib/push/client";
 import {
   applyMove,
@@ -184,6 +185,28 @@ export function RoomMatchView({
   const [mateFxKey, setMateFxKey] = useState(0);
   const [bigShakeKey, setBigShakeKey] = useState(0);
   const celebratedMateRef = useRef<string | null>(null);
+
+  /* ------------------------------ reaction floaters ------------------------------ */
+  /** Floating reaction emoji over the board (realtime, PacClone pattern):
+   *  floaters render INSIDE the board container (.ch-board-fit), never in the
+   *  aside/panel — otherwise they float below the board on mobile. */
+  const [floaters, setFloaters] = useState<{ id: number; emoji: string; x: number }[]>([]);
+  const floaterId = useRef(0);
+  useEffect(() => {
+    if (!match?.id) return;
+    const ch = subscribeReactions(match.id, (emoji) => {
+      const id = ++floaterId.current;
+      const x = 8 + Math.random() * 76; // % across the board
+      setFloaters((f) => [...f.slice(-11), { id, emoji, x }]);
+      window.setTimeout(
+        () => setFloaters((f) => f.filter((fl) => fl.id !== id)),
+        2200
+      );
+    });
+    return () => {
+      ch.unsubscribe();
+    };
+  }, [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ------------------------------ loading ------------------------------ */
   useEffect(() => {
@@ -586,6 +609,16 @@ export function RoomMatchView({
               </div>
             )}
             {mateFxKey > 0 && <div key={mateFxKey} className="ch-mate-flash" />}
+            {floaters.map((f) => (
+              <span
+                key={f.id}
+                className="ch-reaction-float"
+                style={{ left: `${f.x}%` }}
+                aria-hidden="true"
+              >
+                {f.emoji}
+              </span>
+            ))}
             {pendingPromo && (
               <div className="ch-promo-overlay">
                 <div className="ch-promo-dialog">
