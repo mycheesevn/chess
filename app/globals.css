@@ -227,6 +227,34 @@ body {
   max-width: 100%;
 }
 
+.ch-board-fit.shake-big {
+  animation: board-shake-big 0.7s ease;
+}
+@keyframes board-shake-big {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-10px, 4px) rotate(-0.6deg); }
+  30% { transform: translate(9px, -5px) rotate(0.5deg); }
+  45% { transform: translate(-7px, 3px) rotate(-0.4deg); }
+  60% { transform: translate(6px, -3px) rotate(0.3deg); }
+  75% { transform: translate(-4px, 2px); }
+}
+.ch-mate-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(
+    circle,
+    rgba(255, 215, 0, 0.55) 0%,
+    rgba(255, 215, 0, 0) 70%
+  );
+  animation: mate-flash 1.2s ease forwards;
+}
+@keyframes mate-flash {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0; }
+}
 .ch-board-fit.shake {
   animation: board-shake 0.4s ease;
 }
@@ -642,9 +670,48 @@ body {
     flex: 1 0 auto;
   }
   /* Board views get a wider content column so the height-driven board
-     lands at the same size as the play board. */
+     lands at the same size as the play board, and tighter padding so the
+     650px board column fits the viewport height. */
   .ch-scroll-area .ch-view:has(.ch-board-area) {
     max-width: 1000px;
+    padding: 4px;
+  }
+  /* When a match takes over the view, its side panel carries the back
+     button — hide the view-level one to reclaim its 29px for the board. */
+  .ch-scroll-area .ch-view:has(.ch-room-match) > button.ch-btn {
+    display: none;
+  }
+
+  /* ---------- board size uniformity (all views = play view size) ----------
+     Playwright-measured at 700/800/900px viewport heights: the play view's
+     board always resolves to exactly `100dvh - 158px` on desktop (the 158px
+     is the fixed chrome: header + status strip + gaps + board padding).
+     The play view is the canonical reference and is never touched here. */
+  /* Views whose container offers MORE height than the play view's
+     (puzzle/rush/setup/library/history — these own their .ch-page root and
+     sit outside .ch-scroll-area): clamp the fit down to the play-view board
+     size. Width follows via aspect-ratio. The cap equals the play view's own
+     computed size by construction, so the play view is unaffected. */
+  .ch-board-fit {
+    max-height: calc(100dvh - 158px);
+  }
+  /* Room match + corr active game: two-column like the play view — the
+     board column takes the full height (the fit clamps to the 642px play
+     size via the global max-height above) and every side element (vs
+     header, status, buttons, move list, reactions, comments) lives in the
+     side panel. This beats the :has() column fixup above by source order
+     at equal specificity. */
+  .ch-scroll-area .ch-room-match > .ch-room-match-main {
+    display: flex;
+    flex-direction: row;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 12px;
+    align-items: stretch;
+  }
+  .ch-scroll-area .ch-room-match .ch-room-match-main > .ch-board-area {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }
 
@@ -690,6 +757,28 @@ body {
     height: auto;
     max-width: 560px;
     margin: 0 auto;
+  }
+
+  /* Room match + corr active game stack vertically on phones: full-width
+     board on top (width-driven, fully visible), side panel below; the page
+     scrolls. The board-area sizes from the viewport (not the nested
+     .ch-view padding) so the board is exactly the play view's 366px. */
+  .ch-room-match-main {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .ch-room-match-main > .ch-board-area {
+    width: calc(100vw - 20px);
+    /* align-self (not margin auto): truly centers even when the item is
+       wider than the container, so the board lands at x=10 like the play
+       view instead of sticking out to the right. */
+    align-self: center;
+  }
+  /* On phones the view-level back button sits at the top; the panel's
+     duplicate is hidden to avoid redundancy. */
+  .ch-room-side .ch-room-exit {
+    display: none;
   }
 
   /* Eval bar goes horizontal above the board on phones. */
@@ -1505,7 +1594,26 @@ body {
 .ch-comment {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 8px; padding: 6px 10px; font-size: 14px;
+  display: flex; gap: 8px; align-items: flex-start;
 }
+.ch-comment-avatar {
+  width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+}
+.ch-comment-avatar-fallback {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--border); font-size: 16px;
+}
+.ch-comment-body { flex: 1; min-width: 0; }
+.ch-comment-meta {
+  display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px;
+  font-size: 12px; color: var(--muted);
+}
+.ch-comment-meta strong { color: var(--text); font-size: 13px; }
+.ch-comment-move {
+  background: var(--accent-2); color: #fff; border-radius: 4px;
+  padding: 0 6px; font-size: 11px; font-weight: 600;
+}
+.ch-comment-time { margin-left: auto; white-space: nowrap; }
 .ch-comment-form { display: flex; gap: 6px; }
 .ch-comment-form .ch-input { flex: 1; }
 
@@ -1976,3 +2084,26 @@ body {
   max-width: 420px;
   line-height: 1.6;
 }
+
+/* ---------- leaderboard (PacClone parity) ---------- */
+.ch-lb-me {
+  background: var(--panel); border: 1px solid var(--accent);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;
+}
+.ch-lb-me-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 6px;
+}
+.ch-lb-me-row:last-child { margin-bottom: 0; }
+.ch-lb-me-label { flex: 1; font-weight: 700; }
+.ch-lb-me-sub { color: var(--muted); font-size: 0.85rem; }
+.ch-lb-me-row-hl { border-color: var(--accent); }
+.ch-stats-row {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  color: var(--muted); font-size: 0.85rem; margin-top: 6px;
+}
+.ch-section-title {
+  margin: 4px 0 10px; font-size: 1rem; font-weight: 700; color: var(--ink);
+}
+.ch-lb-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ch-lb-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-lb-sub { color: var(--muted); font-size: 0.82rem; }
