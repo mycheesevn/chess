@@ -11,6 +11,9 @@ import {
   type GameResult,
 } from "@/lib/chess/engine";
 import { parseFen } from "@/lib/chess/fen";
+import { moveToUci } from "@/lib/chess/uci";
+import { useAuth } from "./AuthProvider";
+import { saveCvcGame } from "@/lib/supabase/engagement";
 import { STR } from "@/lib/chess/i18n";
 import { toSAN } from "@/lib/chess/notation";
 import {
@@ -72,8 +75,10 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
     };
   }, [fen]);
 
+  const { user } = useAuth();
   const [pos, setPos] = useState<Pos>(initial);
   const [sans, setSans] = useState<string[]>([]);
+  const [ucis, setUcis] = useState<string[]>([]);
   const [lastMove, setLastMove] = useState<Move | null>(null);
   const [fight, setFight] = useState<FightAnim | null>(null);
   const [playing, setPlaying] = useState(true);
@@ -130,6 +135,7 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
         if (next.length >= MAX_PLIES) setCapped(true);
         return next;
       });
+      setUcis((prev) => [...prev, moveToUci(move)]);
       setLastMove(move);
       if (piece) {
         setFight({ id: Date.now(), move, piece, captured: captured ?? null });
@@ -145,6 +151,25 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
       window.clearTimeout(think);
     };
   }, [playing, over, pos, level, lang, speed]);
+
+  // Save the finished game to History once (signed-in users only) so
+  // it can be replayed and exported to video like any other game.
+  // Stats/XP/rating are NOT touched — see saveCvcGame. The stored
+  // result is from White's point of view.
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (!over || savedRef.current || !user || ucis.length === 0) return;
+    savedRef.current = true;
+    const result: "win" | "loss" | "draw" =
+      status.over && status.kind === "checkmate"
+        ? status.winner === "white"
+          ? "win"
+          : "loss"
+        : "draw";
+    saveCvcGame(user.id, { level, result, ucis, startFen: fen }).catch(
+      () => {}
+    );
+  }, [over, status, user, ucis, level, fen]);
 
   // Celebrate a checkmate finish once.
   useEffect(() => {
@@ -164,8 +189,10 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
     timers.current.forEach((id) => window.clearTimeout(id));
     timers.current = [];
     celebratedRef.current = false;
+    savedRef.current = false;
     setPos(initial);
     setSans([]);
+    setUcis([]);
     setLastMove(null);
     setFight(null);
     setCapped(false);

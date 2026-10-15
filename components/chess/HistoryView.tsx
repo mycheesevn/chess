@@ -88,7 +88,19 @@ export function HistoryView({ lang }: { lang: Lang }) {
       lang === "vi" ? "vi-VN" : "en-US"
     );
     const title =
-      g.result === "win"
+      g.player_color === "cvc"
+        ? g.result === "win"
+          ? lang === "vi"
+            ? "🤖 Máy đấu máy: Trắng thắng! 🏆"
+            : "🤖 Computer vs Computer: White wins! 🏆"
+          : g.result === "draw"
+            ? lang === "vi"
+              ? "🤖 Máy đấu máy: Hòa! 🤝"
+              : "🤖 Computer vs Computer: Draw! 🤝"
+            : lang === "vi"
+              ? "🤖 Máy đấu máy: Đen thắng! 🏆"
+              : "🤖 Computer vs Computer: Black wins! 🏆"
+        : g.result === "win"
         ? lang === "vi"
           ? `Thắng máy cấp ${g.ai_level}! 🏆`
           : `Beat the computer (Level ${g.ai_level})! 🏆`
@@ -226,6 +238,7 @@ export function HistoryView({ lang }: { lang: Lang }) {
       losses = 0,
       draws = 0;
     for (const g of games) {
+      if (g.player_color === "cvc") continue; // spectator games aren't the user's W/L
       if (g.result === "win") wins++;
       else if (g.result === "loss") losses++;
       else draws++;
@@ -368,7 +381,9 @@ export function HistoryView({ lang }: { lang: Lang }) {
               <li key={g.id} className="ch-lb-row">
                 <span>{resultIcon(g.result)}</span>
                 <span className="ch-lb-name">
-                  {lang === "vi" ? "Máy cấp" : "Level"} {g.ai_level} ·{" "}
+                  {g.player_color === "cvc"
+                    ? `🤖 ${STR[lang].cvcTitle} · ${lang === "vi" ? "cấp" : "Lv"} ${g.ai_level} · `
+                    : `${lang === "vi" ? "Máy cấp" : "Level"} ${g.ai_level} · `}
                   {g.plies} {lang === "vi" ? "nước" : "plies"}
                 </span>
                 <span className="ch-lb-title">

@@ -65,6 +65,30 @@ export interface ChessGameRow {
   created_at: string;
 }
 
+/** Save a finished computer-vs-computer game to the user's history
+ *  WITHOUT touching stats/XP/rating (CvC is a spectator tool). The
+ *  row is marked player_color = 'cvc' so HistoryView can label it,
+ *  exclude it from the personal W/L tally, and title its videos
+ *  correctly; result is stored from White's point of view. The
+ *  chess_games "self" RLS policy (FOR ALL, own rows) allows the
+ *  direct insert — no RPC and no migration needed. */
+export async function saveCvcGame(
+  userId: string,
+  args: { level: number; result: "win" | "loss" | "draw"; ucis: string[]; startFen: string }
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("chess_games").insert({
+    user_id: userId,
+    player_color: "cvc",
+    ai_level: args.level,
+    result: args.result,
+    plies: args.ucis.length,
+    moves: args.ucis.join(" "),
+    start_fen: args.startFen,
+  });
+  if (error) throw error;
+}
+
 export async function fetchGameHistory(limit = 100): Promise<ChessGameRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase
