@@ -8,7 +8,13 @@ import { STR } from "@/lib/chess/i18n";
 import { Pagination, usePagination } from "./Pagination";
 import { burstConfetti } from "@/lib/chess/confetti";
 import { useAuth } from "./AuthProvider";
-import { fetchGameHistory, type ChessGameRow } from "@/lib/supabase/engagement";
+import {
+  fetchChessRatingHistory,
+  fetchGameHistory,
+  fetchGameStats,
+  type ChessGameRow,
+  type ChessRatingPoint,
+} from "@/lib/supabase/engagement";
 import {
   fetchMyRoomMatches,
   type MyRoomMatch,
@@ -72,9 +78,26 @@ function boardAfter(
   return boardStateAfter(movesStr, plyCount, startFen).board;
 }
 
+/** SVG polyline points for the rating sparkline (300x60 viewBox). */
+function ratingSparkPoints(pts: { rating: number }[]): string {
+  const n = pts.length;
+  const min = Math.min(...pts.map((p) => p.rating));
+  const max = Math.max(...pts.map((p) => p.rating));
+  const span = Math.max(1, max - min);
+  return pts
+    .map((p, i) => {
+      const x = n === 1 ? 150 : (i / (n - 1)) * 300;
+      const y = 56 - ((p.rating - min) / span) * 48;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 export function HistoryView({ lang }: { lang: Lang }) {
   const { user } = useAuth();
   const [games, setGames] = useState<ChessGameRow[]>([]);
+  const [totals, setTotals] = useState({ wins: 0, losses: 0, draws: 0 });
+  const [ratingPts, setRatingPts] = useState<ChessRatingPoint[]>([]);
   const [roomMatches, setRoomMatches] = useState<MyRoomMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [replay, setReplay] = useState<ChessGameRow | null>(null);
@@ -138,6 +161,8 @@ export function HistoryView({ lang }: { lang: Lang }) {
       .then(setGames)
       .catch(() => {})
       .finally(() => setLoading(false));
+    fetchGameStats(user.id).then(setTotals).catch(() => {});
+    fetchChessRatingHistory(user.id).then(setRatingPts).catch(() => {});
     fetchMyRoomMatches(50).then(setRoomMatches).catch(() => {});
   }, [user]);
 
@@ -233,18 +258,6 @@ export function HistoryView({ lang }: { lang: Lang }) {
       ? uciToMove(replayUcis[ply - 1])
       : null;
 
-  const stats = useMemo(() => {
-    let wins = 0,
-      losses = 0,
-      draws = 0;
-    for (const g of games) {
-      if (g.player_color === "cvc") continue; // spectator games aren't the user's W/L
-      if (g.result === "win") wins++;
-      else if (g.result === "loss") losses++;
-      else draws++;
-    }
-    return { wins, losses, draws };
-  }, [games]);
 
   if (!user) {
     return (
@@ -373,9 +386,41 @@ export function HistoryView({ lang }: { lang: Lang }) {
         <>
           {games.length > 0 && (
             <>
-          <p className="ch-hint">
-            ✅ {stats.wins} · ❌ {stats.losses} · ➖ {stats.draws}
-          </p>
+          <div className="ch-stats-row">
+            <span>🏆 {totals.wins} {STR[lang].wins}</span>
+            <span>💔 {totals.losses} {STR[lang].losses}</span>
+            <span>🤝 {totals.draws} {STR[lang].draws}</span>
+          </div>
+          {ratingPts.length > 1 && (
+            <div className="ch-spark">
+              <div className="ch-spark-head">
+                <span>📈 {STR[lang].ratingProgress}</span>
+                <span>
+                  {ratingPts[0].rating} →{" "}
+                  {ratingPts[ratingPts.length - 1].rating} (
+                  {(ratingPts[ratingPts.length - 1].rating >= ratingPts[0].rating
+                    ? "+"
+                    : "") +
+                    (ratingPts[ratingPts.length - 1].rating - ratingPts[0].rating)}
+                  )
+                </span>
+              </div>
+              <svg
+                viewBox="0 0 300 60"
+                preserveAspectRatio="none"
+                className="ch-spark-svg"
+                aria-hidden="true"
+              >
+                <polyline
+                  points={ratingSparkPoints(ratingPts)}
+                  fill="none"
+                  stroke="#ffd43b"
+                  strokeWidth="2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+            </div>
+          )}
           <ul className="ch-board-list">
             {pageItems.map((g) => (
               <li key={g.id} className="ch-lb-row">
