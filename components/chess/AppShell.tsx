@@ -18,6 +18,7 @@ import { RoomView } from "./RoomView";
 import { FriendsView } from "./FriendsView";
 import { HistoryView } from "./HistoryView";
 import { SetupView } from "./SetupView";
+import { CvCView } from "./CvCView";
 import { LibraryView } from "./LibraryView";
 import { positionToFen } from "@/lib/chess/fen";
 import { AuthModal } from "./AuthModal";
@@ -57,6 +58,7 @@ type View =
   | "puzzle"
   | "library"
   | "setup"
+  | "cvc"
   | "notifications";
 
 // Drawer modes in PacClone's fixed order (community doesn't
@@ -201,6 +203,15 @@ export function AppShell() {
     },
     []
   );
+  // Computer-vs-computer from the setup editor: hand the position to
+  // CvCView the same way (FEN + nonce), it plays both sides.
+  const [cvcStart, setCvcStart] = useState<{ fen: string; nonce: number } | null>(
+    null
+  );
+  const handleCvcStart = useCallback((board: BoardT, turn: Color) => {
+    setCvcStart({ fen: positionToFen(board, turn), nonce: Date.now() });
+    setView("cvc");
+  }, []);
   const handleCustomStartConsumed = useCallback((nonce: number) => {
     setCustomStart((current) => (current?.nonce === nonce ? null : current));
   }, []);
@@ -853,8 +864,18 @@ export function AppShell() {
         <SetupView
           lang={lang}
           onPlay={handleCustomPlay}
+          onCvc={handleCvcStart}
           level={level}
           onLevelChange={setLevel}
+        />
+      )}
+      {view === "cvc" && cvcStart && (
+        <CvCView
+          key={cvcStart.nonce}
+          lang={lang}
+          fen={cvcStart.fen}
+          level={level}
+          onExit={() => setView("setup")}
         />
       )}
       {view === "library" && <LibraryView lang={lang} />}

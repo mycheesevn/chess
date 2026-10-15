@@ -25,6 +25,8 @@ import type {
 interface Props {
   lang: Lang;
   onPlay: (board: BoardT, playerColor: Color, turn: Color) => void;
+  /** Watch two engines play the position out (computer vs computer). */
+  onCvc: (board: BoardT, turn: Color) => void;
   /** The app's shared play-config difficulty (AppShell state) — the
    * setup form edits it directly, so the game starts at this level. */
   level: Level;
@@ -45,7 +47,7 @@ const ERROR_KEYS: Record<SetupError, string> = {
   finished: "setupErrFinished",
 };
 
-export function SetupView({ lang, onPlay, level, onLevelChange }: Props) {
+export function SetupView({ lang, onPlay, onCvc, level, onLevelChange }: Props) {
   const s = STR[lang];
   const [board, setBoard] = useState<BoardT>(() => initialBoard());
   const [tool, setTool] = useState<Tool>({ kind: "move" });
@@ -134,6 +136,16 @@ export function SetupView({ lang, onPlay, level, onLevelChange }: Props) {
     }
     setError(null);
     onPlay(cloneBoard(board), playerColor, turn);
+  };
+
+  const startCvc = () => {
+    const setupError = validateSetup(board, turn);
+    if (setupError) {
+      setError(s[ERROR_KEYS[setupError] as keyof typeof s] as string);
+      return;
+    }
+    setError(null);
+    onCvc(cloneBoard(board), turn);
   };
 
   const reset = () => {
@@ -256,6 +268,9 @@ export function SetupView({ lang, onPlay, level, onLevelChange }: Props) {
             <div className="ch-setup-actions">
               <button type="button" className="ch-btn ch-btn-primary" onClick={start}>
                 {s.setupStart}
+              </button>
+              <button type="button" className="ch-btn" onClick={startCvc}>
+                {s.setupCvc}
               </button>
               <button type="button" className="ch-btn" onClick={reset}>
                 {s.setupReset}
