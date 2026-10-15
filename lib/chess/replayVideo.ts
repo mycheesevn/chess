@@ -60,7 +60,8 @@ const LIGHT = "#EEEED2";
 const DARK = "#769656";
 
 const TITLE_DUR = 2.0;
-const END_DUR = 2.5;
+const FINISH_DUR = 2.2;
+const END_DUR = 2.0;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -213,7 +214,77 @@ export async function exportReplayVideo(input: ReplayVideoInput): Promise<File> 
   const GLIDE = 0.6 / speed;
   const HOLD = 1.0 / speed;
   const PER = GLIDE + HOLD;
-  const total = TITLE_DUR + n * PER + END_DUR;
+  // Chess rules: stalemate is a draw — only checkmate is celebrated.
+  const decisive = finalMate;
+  const finishDur = decisive ? FINISH_DUR : 0;
+  const total = TITLE_DUR + n * PER + finishDur + END_DUR;
+
+  // Confetti over the finish (checkmate or stalemate): deterministic
+  // particle bursts timed to the final move landing + the end card.
+  // Chess palette from lib/chess/confetti.ts.
+  const CONFETTI_COLORS = ["#f5c542", "#769656", "#ffffff", "#e8b64c", "#7fb2e5"];
+  interface ConfettiP {
+    bx: number; by: number; vx: number; vy: number;
+    w: number; h: number; rot: number; vr: number;
+    color: string; delay: number;
+  }
+  const confettiBursts: Array<{ t0: number; parts: ConfettiP[] }> = [];
+  if (finalMate && n > 0) {
+    let seed = 987654321;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const mateT = TITLE_DUR + (n - 1) * PER + GLIDE;
+    const endT = TITLE_DUR + n * PER;
+    const mkBurst = (t0: number, cxp: number) => {
+      const parts: ConfettiP[] = [];
+      for (let i = 0; i < 70; i++) {
+        parts.push({
+          bx: cxp + (rnd() - 0.5) * 60,
+          by: 300 + rnd() * 80,
+          vx: (rnd() - 0.5) * 260,
+          vy: -(240 + rnd() * 320),
+          w: 7 + rnd() * 7,
+          h: 4 + rnd() * 5,
+          rot: rnd() * Math.PI,
+          vr: (rnd() - 0.5) * 9,
+          color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+          delay: rnd() * 0.25,
+        });
+      }
+      confettiBursts.push({ t0, parts });
+    };
+    mkBurst(mateT, VW / 2);
+    mkBurst(mateT + 0.55, VW * 0.3);
+    mkBurst(mateT + 0.55, VW * 0.7);
+    mkBurst(endT + 0.1, VW / 2);
+  }
+  const drawConfetti = (t: number) => {
+    for (const b of confettiBursts) {
+      const age = t - b.t0;
+      if (age < 0) continue;
+      for (const p of b.parts) {
+        const a = age - p.delay;
+        if (a < 0 || a > 2.6) continue;
+        const x = p.bx + p.vx * a;
+        const y = p.by + p.vy * a + 340 * a * a;
+        if (y > VH + 30) continue;
+        ctx.save();
+        ctx.globalAlpha = a > 2.0 ? Math.max(0, (2.6 - a) / 0.6) : 1;
+        ctx.translate(x, y);
+        ctx.rotate(p.rot + p.vr * a);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(
+          -p.w / 2,
+          -p.h / 2,
+          p.w,
+          p.h * (0.4 + 0.6 * Math.abs(Math.sin(a * 6 + p.rot)))
+        );
+        ctx.restore();
+      }
+    }
+  };
 
   const drawPieces = (
     board: BoardT,
@@ -290,8 +361,15 @@ export async function exportReplayVideo(input: ReplayVideoInput): Promise<File> 
       if (idx >= n) {
         board = states[n].board;
         lastMove = n > 0 ? moves[n - 1] : null;
-        card = true;
-        showMate = finalMate;
+        if (decisive && mt < n * PER + FINISH_DUR) {
+          // Finish celebration (family video standard): final board +
+          // result banner + confetti — NO card overlay yet.
+          showMate = finalMate;
+        } else {
+          // Outro card: title/subtitle + the site CTA, a clean END_DUR
+          // (2s) after the celebration.
+          card = true;
+        }
         if (n > 0 && (plies[n - 1].check || plies[n - 1].mate)) {
           checkSq = kingOf(board, states[n].turn);
         }
@@ -477,7 +555,13 @@ export async function exportReplayVideo(input: ReplayVideoInput): Promise<File> 
       ctx.fillStyle = "#cfd8e3";
       ctx.font = "400 33px system-ui, sans-serif";
       ctx.fillText(input.subtitle, VW / 2, VH / 2 + 38, VW - 80);
+      // Site CTA on the intro + outro cards.
+      ctx.fillStyle = "#e8c96a";
+      ctx.font = "600 26px system-ui, sans-serif";
+      ctx.fillText(STR[lang].replaySiteCta, VW / 2, VH / 2 + 104, VW - 60);
     }
+
+    drawConfetti(t);
   };
 
   const stream = canvas.captureStream(30);
