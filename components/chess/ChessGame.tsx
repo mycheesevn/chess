@@ -26,6 +26,7 @@ import {
   getLevelConfig,
   type SearchStats,
 } from "@/lib/chess/ai";
+import { zobristHash } from "@/lib/chess/zobrist";
 import {
   applyMove,
   gameStatus,
@@ -630,9 +631,19 @@ export function ChessGame({
     setThinking(true);
     const t = window.setTimeout(() => {
       const t0 = Date.now();
+      // Repetition steering: occurrence counts of every position
+      // this game has reached (snapshots + the current one).
+      const seen = new Map<string, number>();
+      for (const snap of state.history) {
+        const h = zobristHash(snap.board, snap.turn, snap.castling, snap.ep);
+        seen.set(h, (seen.get(h) ?? 0) + 1);
+      }
+      const curH = zobristHash(state.board, state.turn, state.castling, state.ep);
+      seen.set(curH, (seen.get(curH) ?? 0) + 1);
       const { move, stats } = findBestMove(
         { board: state.board, turn: aiColor, castling: state.castling, ep: state.ep },
-        level
+        level,
+        seen
       );
       setAiStats(stats);
       // Keep the thinking indicator visible long enough to read.

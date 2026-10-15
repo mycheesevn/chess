@@ -11,6 +11,7 @@ import {
   type GameResult,
 } from "@/lib/chess/engine";
 import { parseFen } from "@/lib/chess/fen";
+import { zobristHash } from "@/lib/chess/zobrist";
 import { moveToUci } from "@/lib/chess/uci";
 import { useAuth } from "./AuthProvider";
 import { saveCvcGame } from "@/lib/supabase/engagement";
@@ -86,6 +87,14 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
   const [capped, setCapped] = useState(false);
   const timers = useRef<number[]>([]);
   const celebratedRef = useRef(false);
+  // Position-occurrence counts for the engines' repetition steering:
+  // seeded with the start position, incremented after every ply.
+  const seenRef = useRef<Map<string, number> | null>(null);
+  if (seenRef.current === null) {
+    seenRef.current = new Map([
+      [zobristHash(initial.board, initial.turn, initial.castling, initial.ep), 1],
+    ]);
+  }
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const status: GameResult = useMemo(
@@ -108,7 +117,8 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
       if (cancelled) return;
       const { move } = findBestMove(
         { board: pos.board, turn: pos.turn, castling: pos.castling, ep: pos.ep },
-        level
+        level,
+        seenRef.current ?? undefined
       );
       if (!move || cancelled) return;
       const piece = pos.board[move.fromY][move.fromX];
@@ -129,6 +139,11 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
       const san = piece
         ? toSAN(pos.board, move, pos.turn, pos.castling, pos.ep, lang, suffix)
         : "?";
+      {
+        const h = zobristHash(r.board, nextTurn, r.castling, r.ep);
+        const m = seenRef.current;
+        if (m) m.set(h, (m.get(h) ?? 0) + 1);
+      }
       setPos({ board: r.board, castling: r.castling, ep: r.ep, turn: nextTurn, halfmove: half });
       setSans((prev) => {
         const next = [...prev, san];
@@ -190,6 +205,9 @@ export function CvCView({ lang, fen, level, onExit }: Props) {
     timers.current = [];
     celebratedRef.current = false;
     savedRef.current = false;
+    seenRef.current = new Map([
+      [zobristHash(initial.board, initial.turn, initial.castling, initial.ep), 1],
+    ]);
     setPos(initial);
     setSans([]);
     setUcis([]);
