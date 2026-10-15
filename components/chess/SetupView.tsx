@@ -1,6 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "./AuthProvider";
+import { Pagination } from "./Pagination";
+import { parseFen, positionToFen } from "@/lib/chess/fen";
+import {
+  deleteSetup,
+  listSavedSetups,
+  saveSetup,
+  type SavedSetup,
+} from "@/lib/chess/savedSetups";
 import { Board } from "./Board";
 import { VectorPiece } from "./Pieces";
 import { initialBoard } from "@/lib/chess/engine";
@@ -55,6 +64,64 @@ export function SetupView({ lang, onPlay, onCvc, level, onLevelChange }: Props) 
   const [playerColor, setPlayerColor] = useState<Color>("white");
   const [turn, setTurn] = useState<Color>("white");
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [savedList, setSavedList] = useState<SavedSetup[]>([]);
+  const [savedName, setSavedName] = useState("");
+  const [savedPage, setSavedPage] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    listSavedSetups(user?.id ?? null)
+      .then((rows) => {
+        if (live) setSavedList(rows);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [user?.id]);
+
+  const onSaveSetup = async () => {
+    const name =
+      savedName.trim() ||
+      `${s.setupsUnnamed} ${new Date().toLocaleDateString(
+        lang === "vi" ? "vi-VN" : "en-US"
+      )}`;
+    try {
+      const row = await saveSetup(
+        user?.id ?? null,
+        name,
+        positionToFen(board, turn)
+      );
+      setSavedList((prev) => [row, ...prev]);
+      setSavedName("");
+      setSavedPage(0);
+      setError(null);
+    } catch {
+      setError(s.setupsSaveFailed);
+    }
+  };
+
+  const onLoadSetup = (row: SavedSetup) => {
+    try {
+      const p = parseFen(row.fen);
+      setBoard(cloneBoard(p.board));
+      setTurn(p.turn);
+      setLifted(null);
+      setError(null);
+    } catch {
+      /* a corrupt saved row — ignore */
+    }
+  };
+
+  const onDeleteSetup = async (row: SavedSetup) => {
+    try {
+      await deleteSetup(user?.id ?? null, row.id);
+      setSavedList((prev) => prev.filter((x) => x.id !== row.id));
+    } catch {
+      /* best-effort */
+    }
+  };
 
   const setCell = (x: number, y: number, piece: Piece | null) => {
     setBoard((prev) => {
@@ -279,6 +346,65 @@ export function SetupView({ lang, onPlay, onCvc, level, onLevelChange }: Props) 
                 {s.setupClear}
               </button>
             </div>
+          </section>
+
+          <section>
+            <h2>{s.setupsTitle}</h2>
+            <div className="ch-setup-form">
+              <label className="ch-field">
+                <input
+                  className="ch-input"
+                  type="text"
+                  value={savedName}
+                  maxLength={60}
+                  placeholder={s.setupsNamePh}
+                  onChange={(e) => setSavedName(e.target.value)}
+                />
+              </label>
+              <button type="button" className="ch-btn" onClick={onSaveSetup}>
+                💾 {s.setupsSave}
+              </button>
+            </div>
+            {savedList.length === 0 ? (
+              <p className="ch-hint">{s.setupsEmpty}</p>
+            ) : (
+              <>
+                <ul className="ch-board-list">
+                  {savedList
+                    .slice(savedPage * 5, savedPage * 5 + 5)
+                    .map((row) => (
+                      <li key={row.id} className="ch-lb-row">
+                        <span className="ch-lb-name">{row.name}</span>
+                        <span className="ch-lb-title">
+                          {new Date(row.created_at).toLocaleDateString(
+                            lang === "vi" ? "vi-VN" : "en-US"
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          className="ch-btn ch-btn-sm"
+                          onClick={() => onLoadSetup(row)}
+                        >
+                          {s.setupsLoad}
+                        </button>
+                        <button
+                          type="button"
+                          className="ch-btn ch-btn-sm"
+                          aria-label="✕"
+                          onClick={() => onDeleteSetup(row)}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+                <Pagination
+                  page={savedPage}
+                  pageCount={Math.max(1, Math.ceil(savedList.length / 5))}
+                  onPage={setSavedPage}
+                />
+              </>
+            )}
           </section>
         </aside>
       </main>

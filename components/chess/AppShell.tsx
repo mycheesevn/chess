@@ -813,7 +813,7 @@ export function AppShell() {
           onCustomStartConsumed={handleCustomStartConsumed}
         />
       )}
-      {view !== "play" && view !== "history" && view !== "puzzle" && view !== "setup" && view !== "library" && (
+      {view !== "play" && view !== "history" && view !== "puzzle" && view !== "setup" && view !== "library" && view !== "cvc" && (
         <div className="ch-scroll-area">
           {view === "checkin" && <CheckinView lang={lang} />}
           {view === "ranks" && <LeaderboardView lang={lang} />}
