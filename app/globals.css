@@ -1026,6 +1026,25 @@ body {
   width: 100%;
   max-width: none;
 }
+.ch-cvc-result {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.ch-cvc-moves {
+  overflow-y: auto;
+  min-height: 0;
+  max-height: 300px;
+  font-variant-numeric: tabular-nums;
+}
+.ch-cvc-move-row {
+  display: grid;
+  grid-template-columns: 2.6em 1fr 1fr;
+  gap: 0.4em;
+  padding: 0.12em 0;
+}
+.ch-cvc-move-no {
+  opacity: 0.6;
+}
 .ch-setup-actions {
   display: flex;
   flex-wrap: wrap;

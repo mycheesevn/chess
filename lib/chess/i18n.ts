@@ -39,7 +39,24 @@ export interface Strings {
   promoteTitle: string;
   pieceName: (t: PieceType) => string;
   checkBadge: string;
+  setupCvc: string;
+  cvcTitle: string;
+  cvcHint: string;
+  cvcThinking: string;
+  cvcTurn: string;
+  cvcPlay: string;
+  cvcPause: string;
+  cvcRestart: string;
+  cvcBackToSetup: string;
+  cvcSpeed: string;
+  cvcWhiteWon: string;
+  cvcBlackWon: string;
+  cvcDrawn: string;
+  cvcReasonMate: string;
+  cvcReasonStalemate: string;
+  cvcReasonCap: string;
   checkmateBadge: string;
+  replaySiteCta: string;
   hint: string;
   hintBusy: string;
   hintToast: (move: string) => string;
@@ -249,7 +266,24 @@ export const STR: Record<Lang, Strings> = {
     promoteTitle: "Promote pawn to:",
     pieceName: (t) => PIECE_NAMES.en[t],
     checkBadge: "CHECK!",
+    setupCvc: "🤖 Computer vs Computer",
+    cvcTitle: "Computer vs Computer",
+    cvcHint: "Both engines play at the chosen level to solve this position.",
+    cvcThinking: "Engine thinking…",
+    cvcTurn: "To move",
+    cvcPlay: "▶ Resume",
+    cvcPause: "⏸ Pause",
+    cvcRestart: "↻ Restart",
+    cvcBackToSetup: "↩ Back to setup",
+    cvcSpeed: "Speed",
+    cvcWhiteWon: "🏆 White wins!",
+    cvcBlackWon: "🏆 Black wins!",
+    cvcDrawn: "🤝 Draw!",
+    cvcReasonMate: "Checkmate",
+    cvcReasonStalemate: "Stalemate — draw by rule",
+    cvcReasonCap: "150-move cap reached",
     checkmateBadge: "CHECKMATE!",
+    replaySiteCta: "👉 Play free at chess-my-cheese-vn.vercel.app",
     hint: "💡 Hint",
     hintBusy: "💡 …",
     hintToast: (m) => `💡 Hint: ${m}`,
@@ -448,7 +482,24 @@ export const STR: Record<Lang, Strings> = {
     promoteTitle: "Phong Tốt thành:",
     pieceName: (t) => PIECE_NAMES.vi[t],
     checkBadge: "CHIẾU!",
+    setupCvc: "🤖 Máy đấu với máy",
+    cvcTitle: "Máy đấu với máy",
+    cvcHint: "Hai máy cùng cấp độ tự đấu để giải thế cờ này.",
+    cvcThinking: "Máy đang nghĩ…",
+    cvcTurn: "Lượt đi",
+    cvcPlay: "▶ Chạy tiếp",
+    cvcPause: "⏸ Tạm dừng",
+    cvcRestart: "↻ Chạy lại từ đầu",
+    cvcBackToSetup: "↩ Về sắp xếp",
+    cvcSpeed: "Tốc độ",
+    cvcWhiteWon: "🏆 Trắng thắng!",
+    cvcBlackWon: "🏆 Đen thắng!",
+    cvcDrawn: "🤝 Hòa!",
+    cvcReasonMate: "Chiếu hết",
+    cvcReasonStalemate: "Hết nước đi — hòa theo luật",
+    cvcReasonCap: "Đạt giới hạn 150 nước",
     checkmateBadge: "CHIẾU HẾT!",
+    replaySiteCta: "👉 Chơi miễn phí tại chess-my-cheese-vn.vercel.app",
     hint: "💡 Gợi ý",
     hintBusy: "💡 …",
     hintToast: (m) => `💡 Gợi ý: ${m}`,
