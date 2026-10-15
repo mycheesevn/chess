@@ -40,6 +40,13 @@ export interface Strings {
   pieceName: (t: PieceType) => string;
   checkBadge: string;
   setupCvc: string;
+  setupsTitle: string;
+  setupsSave: string;
+  setupsNamePh: string;
+  setupsLoad: string;
+  setupsEmpty: string;
+  setupsUnnamed: string;
+  setupsSaveFailed: string;
   cvcTitle: string;
   cvcHint: string;
   cvcThinking: string;
@@ -267,6 +274,13 @@ export const STR: Record<Lang, Strings> = {
     pieceName: (t) => PIECE_NAMES.en[t],
     checkBadge: "CHECK!",
     setupCvc: "🤖 Computer vs Computer",
+    setupsTitle: "💾 Saved setups",
+    setupsSave: "Save this position",
+    setupsNamePh: "Name this setup…",
+    setupsLoad: "Load",
+    setupsEmpty: "No saved setups yet.",
+    setupsUnnamed: "Setup",
+    setupsSaveFailed: "Couldn't save the setup.",
     cvcTitle: "Computer vs Computer",
     cvcHint: "Both engines play at the chosen level to solve this position.",
     cvcThinking: "Engine thinking…",
@@ -483,6 +497,13 @@ export const STR: Record<Lang, Strings> = {
     pieceName: (t) => PIECE_NAMES.vi[t],
     checkBadge: "CHIẾU!",
     setupCvc: "🤖 Máy đấu với máy",
+    setupsTitle: "💾 Thế cờ đã lưu",
+    setupsSave: "Lưu thế này",
+    setupsNamePh: "Đặt tên cho thế cờ…",
+    setupsLoad: "Nạp",
+    setupsEmpty: "Chưa lưu thế cờ nào.",
+    setupsUnnamed: "Thế cờ",
+    setupsSaveFailed: "Không lưu được thế cờ.",
     cvcTitle: "Máy đấu với máy",
     cvcHint: "Hai máy cùng cấp độ tự đấu để giải thế cờ này.",
     cvcThinking: "Máy đang nghĩ…",
