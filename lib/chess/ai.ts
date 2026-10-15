@@ -866,7 +866,8 @@ function searchRoot(
   ep: { x: number; y: number } | null,
   maxDepth: number,
   timeCapMs: number,
-  jitter: number
+  jitter: number,
+  seen?: Map<string, number>
 ): RootResult {
   const t0 = Date.now();
   const c = newSearchCtx(timeCapMs);
@@ -904,6 +905,9 @@ function searchRoot(
     let iterBest: Move | null = null;
     let iterScore = -Infinity; // raw (unjittered) best for aspiration/mate
     let iterJittered = -Infinity;
+    let iterSkipped: Move | null = null;
+    let iterSkippedScore = 0;
+    let iterSkippedJittered = -Infinity;
     let aborted = false;
 
     // Previous best first for tight bounds.
@@ -954,14 +958,34 @@ function searchRoot(
         beta = Infinity;
       }
       const js = jitter > 0 ? s + Math.random() * jitter : s;
-      if (js > iterJittered) {
-        iterJittered = js;
+      // Repetition steering (user rule): never walk into a position
+      // for the third time while any alternative exists, and
+      // discount moves that repeat a position once. No draw is
+      // adjudicated — the engine simply finds another direction.
+      const seenCount = seen?.get(nh) ?? 0;
+      if (seenCount >= 2) {
+        if (js > iterSkippedJittered) {
+          iterSkippedJittered = js;
+          iterSkippedScore = s;
+          iterSkipped = m;
+        }
+        continue;
+      }
+      const adj = seenCount === 1 ? js - 50 : js;
+      if (adj > iterJittered) {
+        iterJittered = adj;
         iterScore = s;
         iterBest = m;
       }
       if (s > alpha) alpha = s;
     }
     if (aborted) break;
+    if (!iterBest && iterSkipped) {
+      // Every legal move repeated a position for the third time:
+      // play the least-bad of them (no draw is adjudicated).
+      iterBest = iterSkipped;
+      iterScore = iterSkippedScore;
+    }
     if (iterBest) {
       best = iterBest;
       bestScore = iterScore;
@@ -982,7 +1006,8 @@ function searchRoot(
 /** Best move for `turn` at the given level (1-12). Null when no legal moves. */
 export function findBestMove(
   params: SearchParams,
-  level: Level
+  level: Level,
+  seen?: Map<string, number>
 ): { move: Move | null; stats: SearchStats } {
   const cfg = getLevelConfig(level);
   const { move, stats } = searchRoot(
@@ -992,7 +1017,8 @@ export function findBestMove(
     params.ep,
     cfg.depth,
     cfg.timeCapMs,
-    cfg.jitter
+    cfg.jitter,
+    seen
   );
   return { move, stats };
 }

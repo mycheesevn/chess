@@ -89,6 +89,56 @@ export async function saveCvcGame(
   if (error) throw error;
 }
 
+/** All-time W/L/D totals across the user's vs-computer games
+ *  (PacClone History parity). CvC spectator rows are excluded —
+ *  they aren't the user's results. Counts every row, not just the
+ *  history page's fetch window. */
+export async function fetchGameStats(userId: string): Promise<{
+  wins: number;
+  losses: number;
+  draws: number;
+}> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("chess_games")
+    .select("result")
+    .eq("user_id", userId)
+    .neq("player_color", "cvc");
+  if (error) throw error;
+  let wins = 0,
+    losses = 0,
+    draws = 0;
+  for (const r of (data ?? []) as { result: string }[]) {
+    if (r.result === "win") wins++;
+    else if (r.result === "loss") losses++;
+    else draws++;
+  }
+  return { wins, losses, draws };
+}
+
+export interface ChessRatingPoint {
+  rating: number;
+  xp: number;
+  created_at: string;
+}
+
+/** Rating snapshots (migration 019), oldest first — feeds the
+ *  History sparkline. Empty until 019 runs / games are recorded. */
+export async function fetchChessRatingHistory(
+  userId: string,
+  limit = 200
+): Promise<ChessRatingPoint[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("chess_rating_history")
+    .select("rating, xp, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as ChessRatingPoint[];
+}
+
 export async function fetchGameHistory(limit = 100): Promise<ChessGameRow[]> {
   const supabase = createClient();
   const { data, error } = await supabase

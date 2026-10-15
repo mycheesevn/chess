@@ -178,6 +178,9 @@ export interface Strings {
   noName: string;
   you: string;
   wins: string;
+  losses: string;
+  draws: string;
+  ratingProgress: string;
   winRate: string;
   gamesPlayed: string;
   loading: string;
@@ -412,6 +415,9 @@ export const STR: Record<Lang, Strings> = {
     noName: "Unnamed",
     you: "you",
     wins: "wins",
+    losses: "losses",
+    draws: "draws",
+    ratingProgress: "Rating progress",
     winRate: "win rate",
     gamesPlayed: "games",
     loading: "Loading…",
@@ -635,6 +641,9 @@ export const STR: Record<Lang, Strings> = {
     noName: "Không tên",
     you: "bạn",
     wins: "thắng",
+    losses: "thua",
+    draws: "hòa",
+    ratingProgress: "Tiến trình rating",
     winRate: "tỉ lệ thắng",
     gamesPlayed: "ván",
     loading: "Đang tải…",
