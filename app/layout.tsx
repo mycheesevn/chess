@@ -60,9 +60,13 @@ export default function RootLayout({
         <Script id="sw-register" strategy="afterInteractive">
           {`
             if ("serviceWorker" in navigator) {
-              window.addEventListener("load", function () {
+              if (document.readyState === "complete") {
                 navigator.serviceWorker.register("/sw.js").catch(function () {});
-              });
+              } else {
+                window.addEventListener("load", function () {
+                  navigator.serviceWorker.register("/sw.js").catch(function () {});
+                });
+              }
             }
           `}
         </Script>
