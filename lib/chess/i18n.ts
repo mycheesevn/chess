@@ -218,6 +218,7 @@ export interface Strings {
   hubChallengeLater: string;
   hubChallengeError: string;
   hubChallengeNotFound: string;
+  ssoError: string;
   roomPromote: string;
   roomPromoMembers: (n: number) => string;
   roomPromoFooter: string;
@@ -461,6 +462,8 @@ export const STR: Record<Lang, Strings> = {
     hubChallengeLater: "Later",
     hubChallengeError: "Could not send the challenge. Please try again.",
     hubChallengeNotFound: "That player could not be found.",
+    ssoError:
+      "Couldn't sign in from the SynerWorlds link — please sign in manually.",
     roomPromote: "Promote",
     roomPromoMembers: (n) => `${n} member${n === 1 ? "" : "s"} in room`,
     roomPromoFooter: "👉 Challenge me at chess-my-cheese-vn.vercel.app",
@@ -692,6 +695,8 @@ export const STR: Record<Lang, Strings> = {
     hubChallengeLater: "Để sau",
     hubChallengeError: "Không gửi được lời thách đấu. Vui lòng thử lại.",
     hubChallengeNotFound: "Không tìm thấy người chơi này.",
+    ssoError:
+      "Không đăng nhập được bằng liên kết từ SynerWorlds — vui lòng đăng nhập thủ công.",
     roomPromote: "Quảng bá",
     roomPromoMembers: (n) => `Phòng có ${n} thành viên`,
     roomPromoFooter: "👉 Thách đấu ngay tại chess-my-cheese-vn.vercel.app",

@@ -162,6 +162,8 @@ export function AppShell() {
   } | null>(null);
   const [hubChallengeBusy, setHubChallengeBusy] = useState(false);
   const [hubChallengeMsg, setHubChallengeMsg] = useState<string | null>(null);
+  /** SynerWorlds one-tap login hand-off: ?sso=<magic-link token hash>. */
+  const [ssoToken, setSsoToken] = useState<string | null>(null);
   // Room id to auto-open when the rooms view appears (challenge accept).
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
   const [deepLinkRoomCode, setDeepLinkRoomCode] = useState<string | null>(null);
@@ -380,10 +382,18 @@ export function AppShell() {
   const parseDeepLink = useCallback(() => {
     try {
       const q = new URLSearchParams(window.location.search);
+      const sso = q.get("sso");
       const corr = q.get("corr");
       const challenge = q.get("challenge");
       const room = q.get("room");
       let consumed = false;
+      // SynerWorlds one-tap login hand-off: a single-use magic-link token.
+      // Parsed independently of the if/else chain below — it can arrive
+      // together with ?room= or ?challenge=.
+      if (sso) {
+        setSsoToken(sso);
+        consumed = true;
+      }
       if (room && /^[A-Za-z0-9]{6}$/.test(room)) {
         setDeepLinkRoomCode(room.toUpperCase());
         setView("rooms");
@@ -417,6 +427,28 @@ export function AppShell() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [parseDeepLink]);
+
+  // Hub one-tap login: redeem the one-time token; the auth listener picks
+  // the session up from there. Failures are said out loud (toast), never
+  // swallowed — the player can still sign in manually.
+  useEffect(() => {
+    if (!ssoToken) return;
+    let cancelled = false;
+    (async () => {
+      const { createClient } = await import("@/lib/supabase/client");
+      const { error } = await createClient().auth.verifyOtp({
+        token_hash: ssoToken,
+        type: "magiclink",
+      });
+      if (cancelled) return;
+      setSsoToken(null);
+      if (error) setHubChallengeMsg(s.ssoError);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ssoToken]);
 
   // Hub challenge deep link: prompt login first if needed, resolve the
   // handle to a player, then ask for confirmation before sending.
