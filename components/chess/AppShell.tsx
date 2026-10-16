@@ -37,7 +37,9 @@ import { fetchUnreadCount } from "@/lib/supabase/notifications";
 import { notifyPushTrigger } from "@/lib/push/client";
 import {
   acceptChallenge,
+  displayNameOf,
   respondChallenge,
+  sendChallenge,
   startPresence,
   subscribeChallenges,
   type IncomingChallenge,
@@ -149,6 +151,17 @@ export function AppShell() {
   const [deepLinkChallengeId, setDeepLinkChallengeId] = useState<string | null>(
     null
   );
+  /** Hub deep link: ?challenge=<handle> — an OUTGOING challenge to that
+   *  player (the UUID form above is an INCOMING challenge id). */
+  const [hubChallengeHandle, setHubChallengeHandle] = useState<string | null>(
+    null
+  );
+  const [hubChallengeTarget, setHubChallengeTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [hubChallengeBusy, setHubChallengeBusy] = useState(false);
+  const [hubChallengeMsg, setHubChallengeMsg] = useState<string | null>(null);
   // Room id to auto-open when the rooms view appears (challenge accept).
   const [pendingRoomId, setPendingRoomId] = useState<string | null>(null);
   const [deepLinkRoomCode, setDeepLinkRoomCode] = useState<string | null>(null);
@@ -383,6 +396,11 @@ export function AppShell() {
         setDeepLinkChallengeId(challenge);
         setView("friends");
         consumed = true;
+      } else if (challenge) {
+        // From the SynerWorlds hub (profile page / Tìm đối thủ board):
+        // ?challenge=<handle> asks to challenge that player.
+        setHubChallengeHandle(challenge.toLowerCase());
+        consumed = true;
       }
       if (consumed) window.history.replaceState({}, "", window.location.pathname);
     } catch {
@@ -399,6 +417,76 @@ export function AppShell() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [parseDeepLink]);
+
+  // Hub challenge deep link: prompt login first if needed, resolve the
+  // handle to a player, then ask for confirmation before sending.
+  useEffect(() => {
+    if (!hubChallengeHandle) return;
+    if (!user) {
+      setAuthOpen("in");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const { data } = await createClient()
+          .from("profiles")
+          .select("id, full_name, username")
+          .eq("handle", hubChallengeHandle)
+          .maybeSingle();
+        if (cancelled) return;
+        setHubChallengeHandle(null);
+        if (!data) {
+          setHubChallengeMsg(s.hubChallengeNotFound);
+          return;
+        }
+        const row = data as {
+          id: string;
+          full_name: string | null;
+          username: string | null;
+        };
+        if (row.id === user.id) return;
+        setHubChallengeTarget({ id: row.id, name: displayNameOf(row) });
+      } catch {
+        setHubChallengeHandle(null);
+        setHubChallengeMsg(s.hubChallengeError);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubChallengeHandle, user]);
+
+  const doHubChallenge = async () => {
+    if (!hubChallengeTarget || hubChallengeBusy) return;
+    setHubChallengeBusy(true);
+    setHubChallengeMsg(null);
+    try {
+      const ch = await sendChallenge(
+        hubChallengeTarget.id,
+        hubChallengeTarget.name
+      );
+      notifyPushTrigger({ kind: "challenge", challengeId: ch.id });
+      setHubChallengeTarget(null);
+      if (ch.room_id) {
+        setPendingRoomId(ch.room_id);
+        setView("rooms");
+      }
+    } catch {
+      setHubChallengeMsg(s.hubChallengeError);
+    } finally {
+      setHubChallengeBusy(false);
+    }
+  };
+
+  // Auto-clear the hub challenge toast.
+  useEffect(() => {
+    if (!hubChallengeMsg || hubChallengeTarget) return;
+    const t = window.setTimeout(() => setHubChallengeMsg(null), 4500);
+    return () => clearTimeout(t);
+  }, [hubChallengeMsg, hubChallengeTarget]);
 
   const go = useCallback((v: View) => {
     setView(v);
@@ -917,6 +1005,39 @@ export function AppShell() {
             </div>
           </div>
         </div>
+      )}
+      {hubChallengeTarget && (
+        <div className="ch-modal-root" role="dialog" aria-modal="true">
+          <div className="ch-modal">
+            <h3>{s.hubChallengeTitle(hubChallengeTarget.name)}</h3>
+            {hubChallengeMsg && (
+              <p className="ch-error" role="alert">
+                {hubChallengeMsg}
+              </p>
+            )}
+            <div className="ch-modal-actions">
+              <button
+                type="button"
+                className="ch-btn ch-btn-primary"
+                disabled={hubChallengeBusy}
+                onClick={doHubChallenge}
+              >
+                {s.hubChallengeSend}
+              </button>
+              <button
+                type="button"
+                className="ch-btn"
+                disabled={hubChallengeBusy}
+                onClick={() => setHubChallengeTarget(null)}
+              >
+                {s.hubChallengeLater}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {hubChallengeMsg && !hubChallengeTarget && (
+        <div className="ch-toast">{hubChallengeMsg}</div>
       )}
       <footer className="ch-footer">
         {lang === "vi"

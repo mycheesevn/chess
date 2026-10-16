@@ -213,6 +213,11 @@ export interface Strings {
   friendsLoading: string;
   friendsSignIn: string;
   friendsActionError: string;
+  hubChallengeTitle: (name: string) => string;
+  hubChallengeSend: string;
+  hubChallengeLater: string;
+  hubChallengeError: string;
+  hubChallengeNotFound: string;
   roomPromote: string;
   roomPromoMembers: (n: number) => string;
   roomPromoFooter: string;
@@ -451,6 +456,11 @@ export const STR: Record<Lang, Strings> = {
     friendsLoading: "Loading…",
     friendsSignIn: "Sign in to add friends.",
     friendsActionError: "Something went wrong. Please try again.",
+    hubChallengeTitle: (name) => `Challenge ${name}?`,
+    hubChallengeSend: "⚔️ Challenge",
+    hubChallengeLater: "Later",
+    hubChallengeError: "Could not send the challenge. Please try again.",
+    hubChallengeNotFound: "That player could not be found.",
     roomPromote: "Promote",
     roomPromoMembers: (n) => `${n} member${n === 1 ? "" : "s"} in room`,
     roomPromoFooter: "👉 Challenge me at chess-my-cheese-vn.vercel.app",
@@ -677,6 +687,11 @@ export const STR: Record<Lang, Strings> = {
     friendsLoading: "Đang tải…",
     friendsSignIn: "Đăng nhập để kết bạn.",
     friendsActionError: "Đã xảy ra lỗi. Vui lòng thử lại.",
+    hubChallengeTitle: (name) => `Thách đấu ${name}?`,
+    hubChallengeSend: "⚔️ Thách đấu",
+    hubChallengeLater: "Để sau",
+    hubChallengeError: "Không gửi được lời thách đấu. Vui lòng thử lại.",
+    hubChallengeNotFound: "Không tìm thấy người chơi này.",
     roomPromote: "Quảng bá",
     roomPromoMembers: (n) => `Phòng có ${n} thành viên`,
     roomPromoFooter: "👉 Thách đấu ngay tại chess-my-cheese-vn.vercel.app",
