@@ -186,8 +186,12 @@ export function AppShell() {
     signOut,
     displayName,
     refreshProfile,
+    sessionExpired,
+    dismissSessionExpired,
   } = useAuth();
   const [welcomeMsg, setWelcomeMsg] = useState("");
+  const [recordMsg, setRecordMsg] = useState<string | null>(null);
+  const [expiredMsg, setExpiredMsg] = useState<string | null>(null);
 
   // Shell UI state: drawer (☰), identity dropdown menu, collapsible settings.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -520,6 +524,25 @@ export function AppShell() {
     return () => clearTimeout(t);
   }, [hubChallengeMsg, hubChallengeTarget]);
 
+  // Auto-clear the record-failure notice.
+  useEffect(() => {
+    if (!recordMsg) return;
+    const t = window.setTimeout(() => setRecordMsg(null), 7000);
+    return () => clearTimeout(t);
+  }, [recordMsg]);
+
+  /* Session ended on its own (expired / refresh failed): say so. */
+  useEffect(() => {
+    if (!sessionExpired) return;
+    setExpiredMsg(s.sessionExpired);
+    const t = window.setTimeout(() => {
+      setExpiredMsg(null);
+      dismissSessionExpired();
+    }, 7000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionExpired]);
+
   const go = useCallback((v: View) => {
     setView(v);
     setMenuOpen(false);
@@ -544,7 +567,9 @@ export function AppShell() {
       await recordGameResult(color, level, result, plies, uciMoves, startFen);
       await refreshProfile();
     } catch {
-      /* offline or not configured — skip silently */
+      // A failed record says so out loud (the game was not counted),
+      // never silently.
+      setRecordMsg(s.recordFailed);
     }
   };
 
@@ -1009,7 +1034,7 @@ export function AppShell() {
       {profileOpen && (
         <ProfileModal lang={lang} onClose={() => setProfileOpen(false)} />
       )}
-      {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}      {declinedToast && <div className="ch-toast">{declinedToast}</div>}
+      {welcomeMsg && <div className="ch-toast">{welcomeMsg}</div>}      {declinedToast && <div className="ch-toast">{declinedToast}</div>}      {recordMsg && <div className="ch-toast">{recordMsg}</div>}      {expiredMsg && <div className="ch-toast">{expiredMsg}</div>}
       {incomingChallenge && (
         <div className="ch-modal-root" role="dialog" aria-modal="true">
           <div className="ch-modal">

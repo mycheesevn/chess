@@ -219,6 +219,8 @@ export interface Strings {
   hubChallengeError: string;
   hubChallengeNotFound: string;
   ssoError: string;
+  recordFailed: string;
+  sessionExpired: string;
   roomPromote: string;
   roomPromoMembers: (n: number) => string;
   roomPromoFooter: string;
@@ -464,6 +466,10 @@ export const STR: Record<Lang, Strings> = {
     hubChallengeNotFound: "That player could not be found.",
     ssoError:
       "Couldn't sign in from the SynerWorlds link — please sign in manually.",
+    recordFailed:
+      "⚠️ Couldn't save this game to the server — it was not counted in Statistics.",
+    sessionExpired:
+      "Your session expired — please sign in again to keep recording results.",
     roomPromote: "Promote",
     roomPromoMembers: (n) => `${n} member${n === 1 ? "" : "s"} in room`,
     roomPromoFooter: "👉 Challenge me at chess-my-cheese-vn.vercel.app",
@@ -697,6 +703,10 @@ export const STR: Record<Lang, Strings> = {
     hubChallengeNotFound: "Không tìm thấy người chơi này.",
     ssoError:
       "Không đăng nhập được bằng liên kết từ SynerWorlds — vui lòng đăng nhập thủ công.",
+    recordFailed:
+      "⚠️ Không ghi được kết quả lên máy chủ — trận này chưa được tính vào Thống kê.",
+    sessionExpired:
+      "Phiên đăng nhập đã hết hạn — hãy đăng nhập lại để tiếp tục ghi kết quả.",
     roomPromote: "Quảng bá",
     roomPromoMembers: (n) => `Phòng có ${n} thành viên`,
     roomPromoFooter: "👉 Thách đấu ngay tại chess-my-cheese-vn.vercel.app",

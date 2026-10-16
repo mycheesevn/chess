@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -32,6 +33,10 @@ interface AuthCtx {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   displayName: string;
+  /** True when the session ended WITHOUT the user asking (expired /
+   *  refresh failed) — the shell shows a "session expired" notice. */
+  sessionExpired: boolean;
+  dismissSessionExpired: () => void;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -41,6 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [chessStats, setChessStats] = useState<ChessStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const explicitSignOutRef = useRef(false);
 
   const loadProfile = useCallback(async (uid: string) => {
     try {
@@ -67,13 +74,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.session?.user ?? null);
         if (data.session?.user) await loadProfile(data.session.user.id);
         const { data: s } = supabase.auth.onAuthStateChange(
-          (_e: string, session: Session | null) => {
-            setUser(session?.user ?? null);
-            if (session?.user) loadProfile(session.user.id);
-            else {
-              setProfile(null);
-              setChessStats(null);
+          (event: string, session: Session | null) => {
+            if (session?.user) {
+              setSessionExpired(false);
+              setUser(session.user);
+              loadProfile(session.user.id);
+              return;
             }
+            if (event === "SIGNED_OUT" && !explicitSignOutRef.current) {
+              // A failed token refresh can emit SIGNED_OUT while the
+              // stored session is still valid — verify before demoting
+              // the player to guest mid-game (chess used to record
+              // nothing after such a silent downgrade). Only a verified
+              // dead session demotes, and it says so out loud.
+              void supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
+                if (data.session?.user) {
+                  setUser(data.session.user);
+                  loadProfile(data.session.user.id);
+                } else {
+                  setUser(null);
+                  setProfile(null);
+                  setChessStats(null);
+                  setSessionExpired(true);
+                }
+              });
+              return;
+            }
+            explicitSignOutRef.current = false;
+            setUser(null);
+            setProfile(null);
+            setChessStats(null);
           }
         );
         sub = s.subscription;
@@ -145,12 +175,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const signOut = useCallback(async () => {
+    explicitSignOutRef.current = true;
     try {
       await createClient().auth.signOut();
     } catch {
       /* ignore */
     }
   }, []);
+
+  const dismissSessionExpired = useCallback(() => setSessionExpired(false), []);
 
   const refreshProfile = useCallback(async () => {
     if (user) await loadProfile(user.id);
@@ -176,8 +209,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshProfile,
       displayName,
+      sessionExpired,
+      dismissSessionExpired,
     }),
-    [user, profile, chessStats, loading, signInWithGoogle, signInWithFacebook, signIn, signUp, signOut, refreshProfile, displayName]
+    [user, profile, chessStats, loading, signInWithGoogle, signInWithFacebook, signIn, signUp, signOut, refreshProfile, displayName, sessionExpired, dismissSessionExpired]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
