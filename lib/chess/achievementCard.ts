@@ -22,8 +22,8 @@ const H = 1350;
 
 function ctaFor(lang: Lang): string {
   return lang === "vi"
-    ? "👉 Chơi miễn phí tại chess-my-cheese-vn.vercel.app"
-    : "👉 Play free at chess-my-cheese-vn.vercel.app";
+    ? "👉 Chơi miễn phí tại chess.synerworlds.com"
+    : "👉 Play free at chess.synerworlds.com";
 }
 
 function unitFor(kind: AchievementKind, lang: Lang): string {

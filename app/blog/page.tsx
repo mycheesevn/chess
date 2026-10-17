@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getAllPosts } from "@/lib/blog";
 
-const SITE_URL = "https://pacclone.vercel.app";
+const SITE_URL = "https://chess.synerworlds.com";
 
 export const metadata: Metadata = {
   title: "Chess guides — Chess Online",

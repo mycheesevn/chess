@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAllPosts, getPost } from "@/lib/blog";
 
-const SITE_URL = "https://pacclone.vercel.app";
+const SITE_URL = "https://chess.synerworlds.com";
 
 export function generateStaticParams() {
   return getAllPosts().map((p) => ({ slug: p.slug }));

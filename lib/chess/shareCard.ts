@@ -121,7 +121,7 @@ export interface RoomPromoInput {
   code: string;
   /** "Phòng có 3 thành viên" style member line. */
   memberLine: string;
-  /** Footer CTA, e.g. "👉 Thách đấu ngay tại chess-my-cheese-vn.vercel.app". */
+  /** Footer CTA, e.g. "👉 Thách đấu ngay tại chess.synerworlds.com". */
   footer: string;
   lang: "vi" | "en";
 }
