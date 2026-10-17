@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { ChessGame, type TcMs } from "./ChessGame";
+import SiteFooter from "./SiteFooter";
 import { LEVELS } from "@/lib/chess/ai";
 import { STR } from "@/lib/chess/i18n";
 import { LEVEL_THRESHOLDS, levelForXp } from "@/lib/chess/levels";
@@ -1096,11 +1097,7 @@ export function AppShell() {
       {hubChallengeMsg && !hubChallengeTarget && (
         <div className="ch-toast">{hubChallengeMsg}</div>
       )}
-      <footer className="ch-footer">
-        {lang === "vi"
-          ? "Bản quyền thuộc về SynerWork Inc. Mọi quyền được bảo lưu."
-          : "Copyright by SynerWork Inc. All rights reserved."}
-      </footer>
+      <SiteFooter lang={lang} className="ch-footer" />
     </div>
   );
 }
